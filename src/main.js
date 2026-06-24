@@ -4,6 +4,7 @@ const canvas = document.getElementById("galaxyCanvas");
 const ctx = canvas.getContext("2d");
 
 const els = {
+  menuBtn: document.getElementById("menuBtn"),
   pauseBtn: document.getElementById("pauseBtn"),
   speedBtn: document.getElementById("speedBtn"),
   stepBtn: document.getElementById("stepBtn"),
@@ -22,6 +23,12 @@ const els = {
   modalTitle: document.getElementById("modalTitle"),
   modalText: document.getElementById("modalText"),
   modalOptions: document.getElementById("modalOptions"),
+  mainMenu: document.getElementById("mainMenu"),
+  menuShape: document.getElementById("menuShape"),
+  menuSize: document.getElementById("menuSize"),
+  menuSeed: document.getElementById("menuSeed"),
+  startMenuBtn: document.getElementById("startMenuBtn"),
+  resumeMenuBtn: document.getElementById("resumeMenuBtn"),
 };
 
 const MONTHS = [
@@ -389,6 +396,39 @@ const SHIP_BUILDS = {
   },
 };
 
+const GALAXY_SIZES = {
+  compact: { label: "Compact", count: 76, scale: 1260, linkRange: 420, background: 420 },
+  standard: { label: "Standard", count: 108, scale: 1580, linkRange: 470, background: 560 },
+  grand: { label: "Grand", count: 146, scale: 1920, linkRange: 525, background: 720 },
+};
+
+const GALAXY_SHAPES = {
+  spiral: { label: "Spiral Arms", arms: 4 },
+  barred: { label: "Barred Spiral", arms: 2 },
+  ring: { label: "Broken Ring", arms: 1 },
+  cluster: { label: "Star Clusters", arms: 5 },
+};
+
+const DEFAULT_GALAXY = { shape: "spiral", size: "standard" };
+
+const BODY_COLORS = {
+  Arid: "#c9955c",
+  Alpine: "#b9d5e3",
+  Ocean: "#3c91c7",
+  Tundra: "#9db9c2",
+  Savanna: "#c2a15a",
+  Continental: "#67b889",
+  Relic: "#b98bd4",
+  Barren: "#8d8176",
+  Molten: "#d36b4a",
+  Ice: "#c5e9f2",
+  "Gas Giant": "#d0a96b",
+  "Storm Giant": "#8aa6ff",
+  "Crystal Belt": "#98dfe9",
+  "Asteroid Belt": "#9aa1a5",
+  "Dust Belt": "#a28264",
+};
+
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const fmt = (value) => Math.floor(value).toLocaleString("en-US");
 const oneDecimal = (value) => (Math.round(value * 10) / 10).toFixed(1);
@@ -437,6 +477,26 @@ function weightedPick(entries) {
   return entries[entries.length - 1].value;
 }
 
+function randomBell() {
+  return (state.rng() + state.rng() + state.rng()) / 3;
+}
+
+function normalizeGalaxySettings(settings = {}) {
+  const shape = GALAXY_SHAPES[settings.shape] ? settings.shape : DEFAULT_GALAXY.shape;
+  const size = GALAXY_SIZES[settings.size] ? settings.size : DEFAULT_GALAXY.size;
+  return {
+    shape,
+    size,
+    shapeLabel: GALAXY_SHAPES[shape].label,
+    sizeLabel: GALAXY_SIZES[size].label,
+    ...GALAXY_SIZES[size],
+  };
+}
+
+function randomSeed() {
+  return Math.floor(10000000 + Math.random() * 89999999);
+}
+
 function createEmptyResources(values = {}) {
   return {
     energy: values.energy || 0,
@@ -448,10 +508,14 @@ function createEmptyResources(values = {}) {
   };
 }
 
-function newGame(seed = Date.now()) {
+function newGame(seed = Date.now(), galaxySettings = DEFAULT_GALAXY, options = {}) {
+  const cleanSeed = Number.isFinite(Number(seed)) ? Number(seed) : Date.now();
+  const galaxy = normalizeGalaxySettings(galaxySettings);
   state = {
-    seed,
-    rng: makeRng(seed),
+    seed: cleanSeed,
+    rng: makeRng(cleanSeed),
+    galaxy,
+    menuOpen: Boolean(options.menuOpen),
     running: false,
     speedIndex: 0,
     speeds: [1, 2, 4],
@@ -459,6 +523,7 @@ function newGame(seed = Date.now()) {
     autoTimer: 0,
     mapMode: "political",
     selectedSystemId: null,
+    selectedBodyId: null,
     selectedFleetId: "fleet-home",
     camera: { x: 0, y: 0, zoom: 0.46 },
     systems: [],
@@ -543,7 +608,10 @@ function newGame(seed = Date.now()) {
   generateGalaxy();
   state.tech.choices = drawTechChoices();
   chooseTech(state.tech.choices[0]?.id, true);
-  addLog("The Commonwealth Senate authorizes a full extrasolar expansion program.", "major");
+  addLog(
+    `The Commonwealth Senate authorizes expansion into a ${galaxy.sizeLabel.toLowerCase()} ${galaxy.shapeLabel.toLowerCase()} galaxy.`,
+    "major"
+  );
   addLog("Science Vessel Meridian and Constructor Dauntless await orders.", "science");
   updateKnownFromBorders();
   discoverContacts();
@@ -573,16 +641,15 @@ function generateGalaxy() {
 
   systems.push(createSystem(0, nextName("Aurelia"), 0, 0, true));
 
-  const count = 98;
+  const count = state.galaxy.count;
   for (let i = 1; i < count; i++) {
-    const arm = i % 4;
-    const radius = 150 + Math.pow(state.rng(), 0.72) * 1480;
-    const twist = radius / 460;
-    const theta = arm * (Math.PI / 2) + twist + randRange(-0.56, 0.56);
-    const jitter = randRange(-72, 72);
-    const x = Math.cos(theta) * radius + Math.cos(theta + Math.PI / 2) * jitter;
-    const y = Math.sin(theta) * radius + Math.sin(theta + Math.PI / 2) * jitter;
-    systems.push(createSystem(i, nextName(), x, y, false));
+    let point = null;
+    for (let attempt = 0; attempt < 18; attempt++) {
+      point = galaxyPoint(i, count);
+      const nearest = systems.reduce((best, system) => Math.min(best, Math.hypot(system.x - point.x, system.y - point.y)), Infinity);
+      if (nearest > 58 || attempt === 17) break;
+    }
+    systems.push(createSystem(i, nextName(), point.x, point.y, false));
   }
 
   state.systems = systems;
@@ -591,6 +658,85 @@ function generateGalaxy() {
   createFleets();
   createBackgroundStars();
   state.selectedSystemId = state.empires.player.homeSystemId;
+  state.selectedBodyId = preferredBodyId(state.systems[state.selectedSystemId]);
+}
+
+function galaxyPoint(index, count) {
+  if (state.galaxy.shape === "barred") return barredGalaxyPoint(index, count);
+  if (state.galaxy.shape === "ring") return ringGalaxyPoint(index, count);
+  if (state.galaxy.shape === "cluster") return clusterGalaxyPoint(index, count);
+  return spiralGalaxyPoint(index, count);
+}
+
+function spiralGalaxyPoint(index) {
+  const arm = index % GALAXY_SHAPES.spiral.arms;
+  const scale = state.galaxy.scale;
+  const radius = 145 + Math.pow(state.rng(), 0.72) * scale;
+  const twist = radius / (scale * 0.31);
+  const theta = arm * (Math.PI / 2) + twist + randRange(-0.58, 0.58);
+  const jitter = randRange(-scale * 0.048, scale * 0.048);
+  return {
+    x: Math.cos(theta) * radius + Math.cos(theta + Math.PI / 2) * jitter,
+    y: Math.sin(theta) * radius + Math.sin(theta + Math.PI / 2) * jitter,
+  };
+}
+
+function barredGalaxyPoint(index) {
+  const scale = state.galaxy.scale;
+  if (state.rng() < 0.28) {
+    const x = (randomBell() - 0.5) * scale * 0.95;
+    const y = (randomBell() - 0.5) * scale * 0.18 + Math.sin(index * 0.72) * scale * 0.035;
+    const tilt = -0.38;
+    return rotatePoint(x, y, tilt);
+  }
+  const arm = index % 2;
+  const radius = 210 + Math.pow(state.rng(), 0.68) * scale;
+  const theta = arm * Math.PI + radius / (scale * 0.36) + randRange(-0.42, 0.42);
+  const jitter = randRange(-scale * 0.055, scale * 0.055);
+  return {
+    x: Math.cos(theta) * radius + Math.cos(theta + Math.PI / 2) * jitter,
+    y: Math.sin(theta) * radius + Math.sin(theta + Math.PI / 2) * jitter,
+  };
+}
+
+function ringGalaxyPoint() {
+  const scale = state.galaxy.scale;
+  if (state.rng() < 0.18) {
+    const radius = Math.pow(state.rng(), 0.55) * scale * 0.42;
+    const theta = state.rng() * Math.PI * 2;
+    return { x: Math.cos(theta) * radius, y: Math.sin(theta) * radius };
+  }
+  const theta = state.rng() * Math.PI * 2;
+  const wave = Math.sin(theta * 5 + state.seed * 0.0001) * scale * 0.045;
+  const radius = scale * randRange(0.58, 0.96) + wave + randRange(-scale * 0.05, scale * 0.05);
+  return {
+    x: Math.cos(theta) * radius,
+    y: Math.sin(theta) * radius * randRange(0.82, 1.05),
+  };
+}
+
+function clusterGalaxyPoint(index) {
+  const scale = state.galaxy.scale;
+  const clusterCount = GALAXY_SHAPES.cluster.arms;
+  const cluster = index % clusterCount;
+  const theta = cluster * ((Math.PI * 2) / clusterCount) + 0.36;
+  const centerRadius = scale * (0.32 + (cluster % 2) * 0.18);
+  const center = {
+    x: Math.cos(theta) * centerRadius,
+    y: Math.sin(theta) * centerRadius,
+  };
+  const spread = scale * randRange(0.08, 0.22);
+  return {
+    x: center.x + (randomBell() - 0.5) * spread * 2.8,
+    y: center.y + (randomBell() - 0.5) * spread * 2.8,
+  };
+}
+
+function rotatePoint(x, y, angle) {
+  return {
+    x: x * Math.cos(angle) - y * Math.sin(angle),
+    y: x * Math.sin(angle) + y * Math.cos(angle),
+  };
 }
 
 function createSystem(id, name, x, y, isHome) {
@@ -619,6 +765,17 @@ function createSystem(id, name, x, y, isHome) {
     deposits[pick(["energy", "minerals", "research"])] += 2;
   }
 
+  const planet = hasPlanet
+    ? {
+        name: `${name} ${isHome ? "Prime" : pick(["I", "II", "III", "Reach", "Bastion"])}`,
+        habitability,
+        size: isHome ? 18 : Math.floor(randRange(9, 24)),
+        type: isHome
+          ? "Continental"
+          : pick(["Arid", "Alpine", "Ocean", "Tundra", "Savanna", "Continental", "Relic", "Barren"]),
+      }
+    : null;
+
   const anomalyTypes = [
     "precursor vault",
     "living crystal reef",
@@ -635,16 +792,8 @@ function createSystem(id, name, x, y, isHome) {
     y,
     star,
     deposits,
-    planet: hasPlanet
-      ? {
-          name: `${name} ${isHome ? "Prime" : pick(["I", "II", "III", "Reach", "Bastion"])}`,
-          habitability,
-          size: isHome ? 18 : Math.floor(randRange(9, 24)),
-          type: isHome
-            ? "Continental"
-            : pick(["Arid", "Alpine", "Ocean", "Tundra", "Savanna", "Continental", "Relic", "Barren"]),
-        }
-      : null,
+    planet,
+    bodies: createSystemBodies(name, star, planet, deposits, isHome),
     colony: null,
     owner: null,
     starbase: null,
@@ -656,6 +805,76 @@ function createSystem(id, name, x, y, isHome) {
     anomalyResolved: false,
     danger: state.rng() < 0.08 ? Math.floor(randRange(4, 12)) : 0,
   };
+}
+
+function createSystemBodies(systemName, star, planet, deposits, isHome) {
+  const bodies = [];
+  const bodyCount = isHome ? 6 : Math.floor(randRange(2, 8));
+  const colonySlot = planet ? clamp(Math.floor(randRange(1, Math.max(2, bodyCount - 1))), 1, bodyCount - 1) : -1;
+  const hasRichBelt = deposits.minerals >= 4 || (!planet && deposits.minerals >= 2 && state.rng() < 0.62);
+
+  for (let index = 0; index < bodyCount; index++) {
+    const orbit = clamp(16 + index * (27 / Math.max(5, bodyCount - 1)) + randRange(-1.8, 1.8), 15, 44);
+    const angle = randRange(0, Math.PI * 2);
+    if (index === colonySlot) {
+      bodies.push({
+        id: "primary-world",
+        name: planet.name,
+        type: planet.type,
+        orbit,
+        angle,
+        size: clamp(planet.size / 1.4, 9, 17),
+        color: BODY_COLORS[planet.type] || BODY_COLORS.Continental,
+        colonySite: true,
+        habitability: planet.habitability,
+        moons: Math.floor(randRange(0, 3)),
+      });
+      continue;
+    }
+
+    const belt = hasRichBelt && index === Math.max(1, colonySlot + 1);
+    const type = belt ? pick(["Asteroid Belt", "Dust Belt", "Crystal Belt"]) : randomBodyType(index, bodyCount, star);
+    bodies.push({
+      id: `body-${index}`,
+      name: bodyName(systemName, index, type),
+      type,
+      orbit,
+      angle,
+      size: belt ? 7 : randRange(7, type.includes("Giant") ? 18 : 13),
+      color: BODY_COLORS[type] || BODY_COLORS.Barren,
+      belt,
+      colonySite: false,
+      habitability: type === "Ocean" || type === "Continental" ? randRange(0.32, 0.68) : 0,
+      moons: type.includes("Giant") ? Math.floor(randRange(2, 7)) : Math.floor(randRange(0, 2)),
+    });
+  }
+
+  bodies.sort((a, b) => a.orbit - b.orbit);
+  return bodies;
+}
+
+function randomBodyType(index, bodyCount, star) {
+  const outer = index > bodyCount * 0.62;
+  const hot = index < 2 || star.code === "A" || star.code === "B";
+  if (outer && state.rng() < 0.38) return pick(["Gas Giant", "Storm Giant", "Ice"]);
+  if (hot && state.rng() < 0.36) return pick(["Molten", "Barren", "Arid"]);
+  return weightedPick([
+    { value: "Barren", weight: 21 },
+    { value: "Ice", weight: outer ? 18 : 8 },
+    { value: "Arid", weight: hot ? 18 : 10 },
+    { value: "Tundra", weight: 9 },
+    { value: "Savanna", weight: 7 },
+    { value: "Ocean", weight: 5 },
+    { value: "Continental", weight: 4 },
+    { value: "Relic", weight: 2 },
+    { value: "Gas Giant", weight: outer ? 12 : 3 },
+  ]);
+}
+
+function bodyName(systemName, index, type) {
+  if (type.includes("Belt")) return `${systemName} ${type}`;
+  const numerals = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII"];
+  return `${systemName} ${numerals[index] || index + 1}`;
 }
 
 function connectGalaxy() {
@@ -681,7 +900,7 @@ function connectGalaxy() {
       .sort((a, b) => a.distance - b.distance)
       .slice(0, 3);
     for (const link of nearest) {
-      if (link.distance < 470 || system.hyperlanes.length < 3) connectSystems(system.id, link.id);
+      if (link.distance < state.galaxy.linkRange || system.hyperlanes.length < 3) connectSystems(system.id, link.id);
     }
   }
 }
@@ -697,18 +916,20 @@ function assignHomeworlds() {
   const playerHome = state.systems[0];
   playerHome.name = "Aurelia";
   playerHome.planet.name = "Aurelia Prime";
+  playerHome.bodies = createSystemBodies(playerHome.name, playerHome.star, playerHome.planet, playerHome.deposits, true);
   claimSystem(playerHome.id, "player", { home: true, reveal: true });
   playerHome.colony = createColony("player", playerHome.planet, true);
   state.empires.player.homeSystemId = playerHome.id;
 
   const angles = [0.42, 2.08, 3.68, 5.12];
   EMPIRE_TEMPLATES.forEach((template, index) => {
+    const radius = state.galaxy.scale * 0.74;
     const target = {
-      x: Math.cos(angles[index]) * 1180,
-      y: Math.sin(angles[index]) * 1180,
+      x: Math.cos(angles[index]) * radius,
+      y: Math.sin(angles[index]) * radius,
     };
     const home = state.systems
-      .filter((system) => !system.owner && systemDistance(system, target) < 700)
+      .filter((system) => !system.owner && systemDistance(system, target) < state.galaxy.scale * 0.48)
       .sort((a, b) => systemDistance(a, target) - systemDistance(b, target))[0];
     const fallback = state.systems
       .filter((system) => !system.owner)
@@ -724,6 +945,7 @@ function assignHomeworlds() {
         type: pick(["Arid", "Ocean", "Alpine", "Continental"]),
       };
     chosen.planet.name = `${template.home} Prime`;
+    chosen.bodies = createSystemBodies(chosen.name, chosen.star, chosen.planet, chosen.deposits, true);
     claimSystem(chosen.id, template.id, { home: true, reveal: false });
     chosen.colony = createColony(template.id, chosen.planet, true);
     state.empires[template.id].homeSystemId = chosen.id;
@@ -824,8 +1046,8 @@ function createFleets() {
 }
 
 function createBackgroundStars() {
-  for (let i = 0; i < 560; i++) {
-    const radius = Math.sqrt(state.rng()) * 2100;
+  for (let i = 0; i < state.galaxy.background; i++) {
+    const radius = Math.sqrt(state.rng()) * state.galaxy.scale * 1.38;
     const theta = state.rng() * Math.PI * 2;
     state.backgroundStars.push({
       x: Math.cos(theta) * radius,
@@ -927,7 +1149,7 @@ function chooseTech(id, silent = false) {
 }
 
 function tickMonth() {
-  if (state.modal || state.victory?.ended) return;
+  if (state.modal || state.victory?.ended || state.menuOpen) return;
   state.month += 1;
 
   processIncome();
@@ -1121,6 +1343,7 @@ function finishFleetOrder(fleet) {
   if (order === "attack") resolvePlayerAttack(fleet, target);
   if (order === "hunt-pirates") resolvePirateHunt(fleet, target);
   if (order === "ai-attack") resolveAIAttack(fleet, target);
+  if (order === "move" && fleet.owner === "player") addLog(`${fleet.name} arrives in ${target.name}.`);
 }
 
 function finishSurvey(fleet, system) {
@@ -1517,6 +1740,27 @@ function selectedSystem() {
   return state.systems[state.selectedSystemId] || null;
 }
 
+function preferredBodyId(system) {
+  return system?.bodies?.find((body) => body.colonySite)?.id || system?.bodies?.[0]?.id || null;
+}
+
+function selectedBody(system = selectedSystem()) {
+  if (!system?.bodies?.length) return null;
+  return system.bodies.find((body) => body.id === state.selectedBodyId) || system.bodies.find((body) => body.id === preferredBodyId(system)) || system.bodies[0];
+}
+
+function selectSystem(systemId, center = true) {
+  const system = state.systems[systemId];
+  if (!system) return;
+  state.selectedSystemId = system.id;
+  state.selectedBodyId = preferredBodyId(system);
+  if (center) {
+    state.camera.x = system.x;
+    state.camera.y = system.y;
+  }
+  updateUI();
+}
+
 function selectedFleet() {
   return state.fleets.find((fleet) => fleet.id === state.selectedFleetId) || null;
 }
@@ -1683,6 +1927,43 @@ function commandAttack(systemId) {
   if (setFleetCourse(fleet, system.id, "attack")) {
     addLog(`${fleet.name} receives attack orders for ${system.name}.`, "war");
   }
+  updateUI();
+}
+
+function commandMoveSelectedFleet(systemId) {
+  const fleet = selectedFleet();
+  const system = state.systems[systemId];
+  if (!fleet || fleet.owner !== "player" || !system) return toast("Select a ship and destination.");
+  if (fleet.order !== "idle") return toast(`${fleet.name} is already executing orders.`);
+  if (fleet.location === system.id && !fleet.route.length) return toast(`${fleet.name} is already in ${system.name}.`);
+  if (setFleetCourse(fleet, system.id, "move")) {
+    addLog(`${fleet.name} plots a course to ${system.name}.`);
+  }
+  updateUI();
+}
+
+function commandReturnSelectedFleet() {
+  const fleet = selectedFleet();
+  if (!fleet || fleet.owner !== "player") return toast("Select a Commonwealth ship.");
+  const home = state.systems[state.empires.player.homeSystemId];
+  if (!home || (fleet.location === home.id && !fleet.route.length)) return toast(`${fleet.name} is already at the capital.`);
+  fleet.route = [];
+  fleet.progress = 0;
+  fleet.order = "idle";
+  if (setFleetCourse(fleet, home.id, "move")) {
+    addLog(`${fleet.name} returns to ${home.name}.`);
+  }
+  updateUI();
+}
+
+function commandHoldSelectedFleet() {
+  const fleet = selectedFleet();
+  if (!fleet || fleet.owner !== "player") return toast("Select a Commonwealth ship.");
+  fleet.route = [];
+  fleet.progress = 0;
+  fleet.target = null;
+  fleet.order = "idle";
+  addLog(`${fleet.name} holds position.`);
   updateUI();
 }
 
@@ -1873,6 +2154,51 @@ function updateUI() {
   renderDiplomacy();
   renderLog();
   renderModal();
+  renderMainMenu();
+}
+
+function renderMainMenu() {
+  els.mainMenu.hidden = !state.menuOpen;
+  els.resumeMenuBtn.disabled = false;
+  document.body.classList.toggle("is-menu-open", state.menuOpen);
+}
+
+function openMainMenu() {
+  state.running = false;
+  state.menuOpen = true;
+  syncMenuControls();
+  updateUI();
+}
+
+function resumeGame() {
+  state.menuOpen = false;
+  updateUI();
+}
+
+function syncMenuControls() {
+  els.menuShape.value = state.galaxy?.shape || DEFAULT_GALAXY.shape;
+  els.menuSize.value = state.galaxy?.size || DEFAULT_GALAXY.size;
+  els.menuSeed.value = String(state.seed || randomSeed());
+}
+
+function readMenuSettings() {
+  const parsedSeed = Number.parseInt(els.menuSeed.value, 10);
+  return {
+    seed: Number.isFinite(parsedSeed) ? parsedSeed : randomSeed(),
+    settings: {
+      shape: els.menuShape.value,
+      size: els.menuSize.value,
+    },
+  };
+}
+
+function startMenuGame() {
+  const { seed, settings } = readMenuSettings();
+  newGame(seed, settings, { menuOpen: false });
+}
+
+function randomizeMenuSeed() {
+  els.menuSeed.value = String(randomSeed());
 }
 
 function renderResources() {
@@ -1990,6 +2316,39 @@ function renderFleetPanel() {
         })
         .join("")}
     </div>
+    ${renderFleetOrders()}
+  `;
+}
+
+function renderFleetOrders() {
+  const fleet = selectedFleet();
+  if (!fleet || fleet.owner !== "player") return "";
+  const system = selectedSystem();
+  const location = state.systems[fleet.location];
+  const target = fleet.target !== null ? state.systems[fleet.target] : null;
+  const status =
+    fleet.order === "idle"
+      ? `Holding at ${location.name}`
+      : `${orderLabel(fleet.order)}${target ? ` to ${target.name}` : ""}`;
+  const moveDisabled = !system || fleet.order !== "idle" || (fleet.location === system.id && !fleet.route.length);
+  const homeId = state.empires.player.homeSystemId;
+  const returnDisabled = fleet.location === homeId && !fleet.route.length;
+  return `
+    <div class="subhead">Ship Orders</div>
+    <div class="fleet-order-card">
+      <div class="system-title">${escapeHtml(fleet.name)}</div>
+      <div class="system-subtitle">${escapeHtml(capitalize(fleet.role))} - ${escapeHtml(status)}</div>
+      <div class="inline-stats">
+        <span class="mini-tag">${fleet.role === "navy" ? `Power ${fmt(fleet.strength)}` : `${fmt(fleet.ships)} hull`}</span>
+        <span class="mini-tag">${fleet.route.length ? `${fleet.route.length} jumps` : "Local orbit"}</span>
+      </div>
+      <div class="action-grid">
+        ${actionButton("Move Here", "move-selected-fleet", { system: system?.id ?? "" }, moveDisabled, "primary")}
+        ${actionButton("Return Home", "return-fleet", {}, returnDisabled, "")}
+        ${actionButton("Hold", "hold-fleet", {}, fleet.order === "idle" && !fleet.route.length, "")}
+        ${system ? actionButton("Focus System", "select-system", { system: system.id }, false, "") : ""}
+      </div>
+    </div>
   `;
 }
 
@@ -2001,6 +2360,7 @@ function orderLabel(order) {
     "hunt-pirates": "Raiders",
     "ai-attack": "Strike",
     attack: "Attack",
+    move: "Move",
     survey: "Survey",
     idle: "Idle",
   }[order] || order;
@@ -2061,6 +2421,7 @@ function renderInspector() {
     return;
   }
 
+  if (!selectedBody(system)) state.selectedBodyId = preferredBodyId(system);
   const owner = system.owner ? state.empires[system.owner] : null;
   const ownerName = owner ? owner.name : "Unclaimed";
   const surveyed = system.surveyedBy.player;
@@ -2087,6 +2448,7 @@ function renderInspector() {
         <span class="mini-tag">Defense: ${system.owner ? fmt(getSystemDefense(system, system.owner)) : "0"}</span>
       </div>
     </div>
+    ${renderSystemMap(system)}
     ${renderColonyBlock(system)}
     <div class="subhead">Orders</div>
     <div class="action-grid">
@@ -2110,6 +2472,104 @@ function renderInspector() {
       ${actionButton("Attack", "attack-system", { system: system.id }, !canAttack(system), "danger")}
     </div>
   `;
+}
+
+function renderSystemMap(system) {
+  const selected = selectedBody(system);
+  const bodies = system.bodies || [];
+  const fleets = systemLocalFleets(system);
+  return `
+    <div class="subhead">Solar System</div>
+    <div class="system-map">
+      <div class="system-map-space" style="--star-color:${system.star.color}">
+        ${bodies
+          .map(
+            (body) =>
+              `<span class="orbit-ring" style="--orbit-size:${Math.max(28, body.orbit * 2)}%"></span>`
+          )
+          .join("")}
+        <span class="system-star" title="${escapeHtml(system.star.code)} class star"></span>
+        ${bodies.map((body) => renderSystemBody(system, body, selected?.id === body.id)).join("")}
+        ${system.stations.mining ? `<span class="station-node mining" title="Mining station">MIN</span>` : ""}
+        ${system.stations.research ? `<span class="station-node research" title="Research station">LAB</span>` : ""}
+        ${fleets.map((fleet, index) => renderSystemShip(system, fleet, index)).join("")}
+      </div>
+      ${renderBodyReadout(system, selected)}
+    </div>
+  `;
+}
+
+function renderSystemBody(system, body, isSelected) {
+  const pos = bodyPosition(body);
+  const hasColony = body.colonySite && system.colony;
+  const hasSite = body.colonySite && !system.colony;
+  const size = body.belt ? 10 : clamp(body.size + 4, 14, 24);
+  return `
+    <button
+      class="system-body ${body.belt ? "is-belt" : ""} ${isSelected ? "is-selected" : ""} ${hasColony ? "has-colony" : ""} ${
+        hasSite ? "has-site" : ""
+      }"
+      style="--body-x:${pos.x}%; --body-y:${pos.y}%; --body-size:${size}px; --body-color:${body.color}"
+      data-action="select-body"
+      data-system="${system.id}"
+      data-body="${escapeHtml(body.id)}"
+      title="${escapeHtml(body.name)}"
+      aria-label="${escapeHtml(body.name)}"
+    ></button>
+  `;
+}
+
+function renderSystemShip(system, fleet, index) {
+  const angle = -0.9 + index * 0.52;
+  const radius = 11 + index * 3;
+  const color = fleet.role === "science" ? "#4fd1d8" : fleet.role === "constructor" ? "#d7c36a" : "#ec6a64";
+  const x = 50 + Math.cos(angle) * radius;
+  const y = 50 + Math.sin(angle) * radius;
+  return `
+    <button
+      class="system-ship ${fleet.role} ${fleet.id === state.selectedFleetId ? "is-selected" : ""}"
+      style="--body-x:${x}%; --body-y:${y}%; --body-color:${color}; background:${color}"
+      data-action="select-fleet"
+      data-fleet="${fleet.id}"
+      title="${escapeHtml(fleet.name)}"
+      aria-label="${escapeHtml(fleet.name)}"
+    ></button>
+  `;
+}
+
+function renderBodyReadout(system, body) {
+  if (!body) return `<div class="body-readout"><div class="system-subtitle">No local bodies catalogued.</div></div>`;
+  const colonyText = body.colonySite
+    ? system.colony
+      ? `${system.colony.name}: ${fmt(system.colony.pops)} pops`
+      : `${Math.round((body.habitability || 0) * 100)}% colony candidate`
+    : body.belt
+      ? "Industrial survey target"
+      : body.moons
+        ? `${body.moons} moons`
+        : "No active installation";
+  return `
+    <div class="body-readout">
+      <div class="system-title">${escapeHtml(body.name)}</div>
+      <div class="system-subtitle">${escapeHtml(body.type)} - ${escapeHtml(colonyText)}</div>
+      <div class="inline-stats">
+        <span class="mini-tag">Orbit ${Math.round(body.orbit)}</span>
+        <span class="mini-tag">${body.belt ? "Belt" : `Size ${Math.round(body.size)}`}</span>
+        ${body.colonySite ? `<span class="mini-tag">Colony Site</span>` : ""}
+      </div>
+    </div>
+  `;
+}
+
+function bodyPosition(body) {
+  return {
+    x: 50 + Math.cos(body.angle) * body.orbit,
+    y: 50 + Math.sin(body.angle) * body.orbit,
+  };
+}
+
+function systemLocalFleets(system) {
+  return state.fleets.filter((fleet) => fleet.location === system.id && !fleet.route.length && (fleet.owner === "player" || fleet.owner === "pirates" || state.contacts[fleet.owner]?.met));
 }
 
 function renderColonyBlock(system) {
@@ -2303,6 +2763,7 @@ function drawGalaxy(time) {
   drawHyperlanes();
   drawTerritory();
   drawSystems(time);
+  drawFleetRoutes();
   drawFleets(time);
   drawSelection();
 }
@@ -2465,12 +2926,7 @@ function drawSystems(time) {
 
 function drawFleets(time) {
   for (const fleet of state.fleets) {
-    const visible =
-      fleet.owner === "player" ||
-      fleet.owner === "pirates" ||
-      state.contacts[fleet.owner]?.met ||
-      state.systems[fleet.location]?.known;
-    if (!visible) continue;
+    if (!fleetVisible(fleet)) continue;
     const pos = fleetPosition(fleet);
     const p = worldToScreen(pos.x, pos.y);
     if (p.x < -40 || p.y < -40 || p.x > viewport.width + 40 || p.y > viewport.height + 40) continue;
@@ -2517,6 +2973,33 @@ function drawFleets(time) {
       ctx.stroke();
     }
   }
+}
+
+function drawFleetRoutes() {
+  const fleet = selectedFleet();
+  if (!fleet || !fleet.route.length || !fleetVisible(fleet)) return;
+  const points = [fleetPosition(fleet), ...fleet.route.map((id) => state.systems[id])].map((point) => worldToScreen(point.x, point.y));
+  ctx.save();
+  ctx.strokeStyle = fleet.owner === "player" ? "rgba(79, 209, 216, 0.58)" : "rgba(242, 184, 75, 0.5)";
+  ctx.lineWidth = 1.4;
+  ctx.setLineDash([5, 6]);
+  ctx.beginPath();
+  points.forEach((point, index) => {
+    if (index === 0) ctx.moveTo(point.x, point.y);
+    else ctx.lineTo(point.x, point.y);
+  });
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+function fleetVisible(fleet) {
+  return (
+    fleet.owner === "player" ||
+    fleet.owner === "pirates" ||
+    state.contacts[fleet.owner]?.met ||
+    state.systems[fleet.location]?.known
+  );
 }
 
 function fleetPosition(fleet) {
@@ -2566,6 +3049,23 @@ function zoomAt(screenX, screenY, factor) {
 }
 
 function selectNearest(screenX, screenY) {
+  let bestFleet = null;
+  for (const fleet of state.fleets) {
+    if (!fleetVisible(fleet)) continue;
+    const pos = fleetPosition(fleet);
+    const p = worldToScreen(pos.x, pos.y);
+    const distance = Math.hypot(p.x - screenX, p.y - screenY);
+    if (!bestFleet || distance < bestFleet.distance) bestFleet = { fleet, distance };
+  }
+  if (bestFleet && bestFleet.distance <= 17) {
+    state.selectedFleetId = bestFleet.fleet.id;
+    const systemId = bestFleet.fleet.target ?? bestFleet.fleet.location;
+    state.selectedSystemId = systemId;
+    state.selectedBodyId = preferredBodyId(state.systems[systemId]);
+    updateUI();
+    return;
+  }
+
   const world = screenToWorld(screenX, screenY);
   let best = null;
   for (const system of state.systems) {
@@ -2574,8 +3074,7 @@ function selectNearest(screenX, screenY) {
   }
   const threshold = 34 / state.camera.zoom;
   if (best && best.distance <= threshold) {
-    state.selectedSystemId = best.system.id;
-    updateUI();
+    selectSystem(best.system.id, false);
   }
 }
 
@@ -2595,16 +3094,16 @@ function capitalize(text) {
 function handleAction(action, target) {
   const data = target.dataset;
   if (action === "new-game") {
-    newGame();
+    openMainMenu();
     return;
   }
+  if (action === "open-menu") return openMainMenu();
+  if (action === "resume-game") return resumeGame();
+  if (action === "start-menu-game") return startMenuGame();
+  if (action === "randomize-seed") return randomizeMenuSeed();
   if (action === "center-home") {
-    const home = state.systems[state.empires.player.homeSystemId];
-    state.camera.x = home.x;
-    state.camera.y = home.y;
+    selectSystem(state.empires.player.homeSystemId, true);
     state.camera.zoom = Math.max(state.camera.zoom, 0.52);
-    state.selectedSystemId = home.id;
-    updateUI();
     return;
   }
   if (action === "zoom-in") return zoomAt(viewport.width / 2, viewport.height / 2, 1.18);
@@ -2616,18 +3115,26 @@ function handleAction(action, target) {
       const position = fleetPosition(fleet);
       state.camera.x = position.x;
       state.camera.y = position.y;
+      const systemId = fleet.target ?? fleet.location;
+      state.selectedSystemId = systemId;
+      state.selectedBodyId = preferredBodyId(state.systems[systemId]);
     }
     updateUI();
     return;
   }
   if (action === "select-system") {
+    selectSystem(Number(data.system), true);
+    return;
+  }
+  if (action === "select-body") {
     state.selectedSystemId = Number(data.system);
-    const system = selectedSystem();
-    state.camera.x = system.x;
-    state.camera.y = system.y;
+    state.selectedBodyId = data.body;
     updateUI();
     return;
   }
+  if (action === "move-selected-fleet") return commandMoveSelectedFleet(Number(data.system));
+  if (action === "return-fleet") return commandReturnSelectedFleet();
+  if (action === "hold-fleet") return commandHoldSelectedFleet();
   if (action === "survey-system") return commandSurvey(Number(data.system));
   if (action === "build-outpost") return commandBuildOutpost(Number(data.system));
   if (action === "build-mining") return commandBuildStation(Number(data.system), "mining");
@@ -2720,6 +3227,7 @@ function bindEvents() {
 
   window.addEventListener("keydown", (event) => {
     if (event.target instanceof HTMLInputElement) return;
+    if (state.menuOpen) return;
     if (event.code === "Space") {
       event.preventDefault();
       state.running = !state.running;
@@ -2737,7 +3245,7 @@ function frame(time) {
   if (!lastFrame) lastFrame = time;
   const dt = time - lastFrame;
   lastFrame = time;
-  if (state.running && !state.modal) {
+  if (state.running && !state.modal && !state.menuOpen) {
     const interval = 900 / state.speeds[state.speedIndex];
     state.autoTimer += dt;
     while (state.autoTimer >= interval) {
@@ -2750,5 +3258,5 @@ function frame(time) {
 }
 
 bindEvents();
-newGame(22000624);
+newGame(22000624, DEFAULT_GALAXY, { menuOpen: true });
 requestAnimationFrame(frame);

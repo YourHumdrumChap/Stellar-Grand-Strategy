@@ -14,6 +14,7 @@
           <span>Star Sovereigns</span>
         </div>
         <div class="time-controls">
+          <button id="menuBtn" class="square-button" data-action="open-menu" title="Main menu">Menu</button>
           <button id="pauseBtn" class="square-button" title="Pause or resume">II</button>
           <button id="stepBtn" class="square-button" title="Advance one month">+1</button>
           <button id="speedBtn" class="square-button" title="Change speed">1x</button>
@@ -93,6 +94,42 @@
         <h2 id="modalTitle"></h2>
         <p id="modalText"></p>
         <div id="modalOptions" class="modal-options"></div>
+      </section>
+    </div>
+
+    <div id="mainMenu" class="menu-screen" hidden>
+      <section class="menu-panel">
+        <div class="menu-kicker">Command Interface</div>
+        <h1>Star Sovereigns</h1>
+        <p class="menu-copy">Forge a procedural galaxy, survey its systems, and command ships from the star map down to local orbit.</p>
+        <div class="menu-grid">
+          <label class="menu-field">
+            <span>Galaxy Type</span>
+            <select id="menuShape">
+              <option value="spiral">Spiral Arms</option>
+              <option value="barred">Barred Spiral</option>
+              <option value="ring">Broken Ring</option>
+              <option value="cluster">Star Clusters</option>
+            </select>
+          </label>
+          <label class="menu-field">
+            <span>Galaxy Size</span>
+            <select id="menuSize">
+              <option value="standard">Standard</option>
+              <option value="compact">Compact</option>
+              <option value="grand">Grand</option>
+            </select>
+          </label>
+          <label class="menu-field">
+            <span>Seed</span>
+            <input id="menuSeed" inputmode="numeric" maxlength="10" value="22000624" />
+          </label>
+        </div>
+        <div class="menu-actions">
+          <button id="startMenuBtn" class="menu-button primary" data-action="start-menu-game">Begin Galaxy</button>
+          <button class="menu-button" data-action="randomize-seed">Random Seed</button>
+          <button id="resumeMenuBtn" class="menu-button" data-action="resume-game">Resume</button>
+        </div>
       </section>
     </div>
 

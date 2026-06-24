@@ -47,10 +47,27 @@ body {
     sans-serif;
 }
 
+body.is-menu-open {
+  overflow: hidden;
+}
+
 button,
 input,
 select {
   font: inherit;
+}
+
+input,
+select {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text);
+}
+
+select option {
+  color: #111720;
 }
 
 button {
@@ -115,7 +132,10 @@ button:disabled {
 .action-button,
 .choice-button,
 .fleet-chip,
-.tab-button {
+.tab-button,
+.menu-button,
+.system-body,
+.system-ship {
   min-height: 32px;
   border: 1px solid var(--line);
   border-radius: 7px;
@@ -140,7 +160,10 @@ button:disabled {
 .action-button:hover,
 .choice-button:hover,
 .fleet-chip:hover,
-.tab-button:hover {
+.tab-button:hover,
+.menu-button:hover,
+.system-body:hover,
+.system-ship:hover {
   border-color: var(--line-strong);
   background: rgba(255, 255, 255, 0.1);
 }
@@ -151,7 +174,10 @@ button:disabled {
 .action-button:active,
 .choice-button:active,
 .fleet-chip:active,
-.tab-button:active {
+.tab-button:active,
+.menu-button:active,
+.system-body:active,
+.system-ship:active {
   transform: translateY(1px);
 }
 
@@ -483,13 +509,158 @@ button:disabled {
 .system-header,
 .contact-row,
 .queue-row,
-.colony-row {
+.colony-row,
+.fleet-order-card {
   display: grid;
   gap: 6px;
   padding: 8px;
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 7px;
   background: rgba(255, 255, 255, 0.045);
+}
+
+.fleet-order-card {
+  margin-top: 8px;
+}
+
+.system-map {
+  display: grid;
+  gap: 8px;
+}
+
+.system-map-space {
+  position: relative;
+  min-height: 220px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.015)),
+    #04070c;
+}
+
+.orbit-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--orbit-size);
+  height: var(--orbit-size);
+  border: 1px solid rgba(179, 211, 216, 0.12);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.system-star {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  border-radius: 50%;
+  background: var(--star-color);
+  box-shadow: 0 0 30px var(--star-color);
+  transform: translate(-50%, -50%);
+}
+
+.system-body,
+.system-ship {
+  position: absolute;
+  left: var(--body-x);
+  top: var(--body-y);
+  display: grid;
+  place-items: center;
+  width: var(--body-size);
+  height: var(--body-size);
+  min-height: 0;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--body-color);
+  box-shadow: 0 0 14px rgba(255, 255, 255, 0.1);
+  transform: translate(-50%, -50%);
+}
+
+.system-body.is-selected,
+.system-ship.is-selected {
+  border-color: rgba(247, 251, 255, 0.82);
+  box-shadow:
+    0 0 0 4px rgba(247, 251, 255, 0.12),
+    0 0 18px var(--body-color);
+}
+
+.system-body.is-belt {
+  width: 10px;
+  height: 10px;
+  background: rgba(197, 213, 220, 0.28);
+}
+
+.system-body.has-colony::after,
+.system-body.has-site::after {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 7px;
+  height: 7px;
+  border: 1px solid rgba(0, 0, 0, 0.55);
+  border-radius: 50%;
+  background: var(--green);
+  content: "";
+}
+
+.system-body.has-site::after {
+  background: var(--cyan);
+}
+
+.system-ship {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+}
+
+.system-ship.navy {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.system-ship.science {
+  border-radius: 50%;
+}
+
+.system-ship.constructor {
+  border-radius: 3px;
+}
+
+.station-node {
+  position: absolute;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  min-height: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--soft);
+  font-size: 10px;
+  font-weight: 820;
+}
+
+.station-node.mining {
+  top: 12px;
+}
+
+.station-node.research {
+  top: 42px;
+}
+
+.body-readout {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .contact-row {
@@ -598,6 +769,104 @@ button:disabled {
   gap: 8px;
 }
 
+.menu-screen {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background:
+    linear-gradient(180deg, rgba(3, 6, 10, 0.78), rgba(3, 6, 10, 0.96)),
+    #03060a;
+  z-index: 20;
+}
+
+.menu-screen::before {
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(circle at 14% 24%, rgba(255, 255, 255, 0.42) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 75% 32%, rgba(255, 255, 255, 0.28) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 42% 78%, rgba(255, 255, 255, 0.34) 0 1px, transparent 1.5px);
+  background-size: 180px 180px, 230px 230px, 310px 310px;
+  content: "";
+  opacity: 0.8;
+}
+
+.menu-panel {
+  position: relative;
+  width: min(720px, 100%);
+  padding: 26px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(13, 17, 24, 0.92);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.58);
+}
+
+.menu-kicker {
+  margin-bottom: 8px;
+  color: var(--gold);
+  font-size: 11px;
+  font-weight: 860;
+  text-transform: uppercase;
+}
+
+.menu-panel h1 {
+  margin: 0;
+  color: #fbfdff;
+  font-size: clamp(34px, 7vw, 62px);
+  line-height: 0.98;
+}
+
+.menu-copy {
+  max-width: 560px;
+  margin: 12px 0 20px;
+  color: var(--soft);
+  line-height: 1.5;
+}
+
+.menu-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.menu-field {
+  display: grid;
+  gap: 6px;
+}
+
+.menu-field span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.menu-field input,
+.menu-field select {
+  width: 100%;
+  padding: 0 9px;
+}
+
+.menu-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.menu-button {
+  min-height: 40px;
+  padding: 9px 13px;
+  font-weight: 820;
+}
+
+.menu-button.primary {
+  border-color: rgba(79, 209, 216, 0.56);
+  background: rgba(79, 209, 216, 0.18);
+}
+
 .empty-state {
   padding: 10px;
   border: 1px dashed rgba(255, 255, 255, 0.16);
@@ -699,4 +968,22 @@ button:disabled {
   .action-grid {
     grid-template-columns: 1fr;
   }
+
+  .menu-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .menu-panel {
+    padding: 20px;
+  }
+}
+
+body.is-menu-open #app {
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+body.is-menu-open .game-shell {
+  overflow: hidden;
 }
