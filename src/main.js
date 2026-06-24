@@ -17,6 +17,7 @@ const els = {
   selectedTag: document.getElementById("selectedTag"),
   diplomacyPanel: document.getElementById("diplomacyPanel"),
   logPanel: document.getElementById("logPanel"),
+  territoryLegend: document.getElementById("territoryLegend"),
   toast: document.getElementById("toast"),
   modalBackdrop: document.getElementById("modalBackdrop"),
   modalKicker: document.getElementById("modalKicker"),
@@ -27,6 +28,7 @@ const els = {
   menuShape: document.getElementById("menuShape"),
   menuSize: document.getElementById("menuSize"),
   menuSeed: document.getElementById("menuSeed"),
+  menuAiCount: document.getElementById("menuAiCount"),
   startMenuBtn: document.getElementById("startMenuBtn"),
   resumeMenuBtn: document.getElementById("resumeMenuBtn"),
 };
@@ -210,6 +212,46 @@ const EMPIRE_TEMPLATES = [
     aggression: 0.82,
     home: "Redoubt",
   },
+  {
+    id: "eidolon",
+    name: "Eidolon League",
+    adjective: "Eidolon",
+    color: "#b7e07b",
+    attitude: 8,
+    expansion: 5,
+    aggression: 0.44,
+    home: "Eidolon",
+  },
+  {
+    id: "manticore",
+    name: "Manticore Mandate",
+    adjective: "Mandate",
+    color: "#ff8a6b",
+    attitude: -18,
+    expansion: 6,
+    aggression: 0.78,
+    home: "Manticore",
+  },
+  {
+    id: "lumen",
+    name: "Lumen Assembly",
+    adjective: "Lumen",
+    color: "#f4d35e",
+    attitude: 4,
+    expansion: 8,
+    aggression: 0.48,
+    home: "Lumen",
+  },
+  {
+    id: "umbra",
+    name: "Umbra Directorate",
+    adjective: "Umbra",
+    color: "#a78bfa",
+    attitude: -8,
+    expansion: 7,
+    aggression: 0.62,
+    home: "Umbra",
+  },
 ];
 
 const TECH_LIBRARY = [
@@ -377,6 +419,20 @@ const PLANET_BUILDS = {
   },
 };
 
+const INFRASTRUCTURE_META = {
+  starbase: { label: "Starbase", color: "#ecf4f7" },
+  colony: { label: "Colony", color: "#67d38f" },
+  colonySite: { label: "Colony candidate", color: "#4fd1d8" },
+  colonyMission: { label: "Colony mission", color: "#ad8cff" },
+  miningStation: { label: "Mining station", color: "#9bd389" },
+  researchStation: { label: "Research station", color: "#4fd1d8" },
+  generator: { label: "Generator district", color: "#f2b84b" },
+  mining: { label: "Mining district", color: "#9bd389" },
+  lab: { label: "Lab district", color: "#4fd1d8" },
+  foundry: { label: "Foundry district", color: "#ec6a64" },
+  city: { label: "City district", color: "#ad8cff" },
+};
+
 const SHIP_BUILDS = {
   corvette: {
     label: "Corvette",
@@ -409,7 +465,7 @@ const GALAXY_SHAPES = {
   cluster: { label: "Star Clusters", arms: 5 },
 };
 
-const DEFAULT_GALAXY = { shape: "spiral", size: "standard" };
+const DEFAULT_GALAXY = { shape: "spiral", size: "standard", aiCount: 4 };
 
 const BODY_COLORS = {
   Arid: "#c9955c",
@@ -428,6 +484,183 @@ const BODY_COLORS = {
   "Asteroid Belt": "#9aa1a5",
   "Dust Belt": "#a28264",
 };
+
+const SPACE_EVENTS = [
+  {
+    id: "solar-wind",
+    title: "Solar Wind Harvest",
+    text: "A chain of cooperative pilots maps a stable stream of charged particles through Commonwealth space.",
+    options: [
+      {
+        label: "Tune the collectors",
+        text: "18 months: energy stations produce more.",
+        modifier: {
+          id: "solar-wind-collectors",
+          label: "Solar Wind Collectors",
+          duration: 18,
+          effects: { stationEnergy: 0.22 },
+          text: "+22% mining-station energy output",
+        },
+      },
+      {
+        label: "Route it to drives",
+        text: "14 months: ships move faster.",
+        modifier: {
+          id: "solar-wind-drives",
+          label: "Charged Drive Wake",
+          duration: 14,
+          effects: { shipSpeed: 0.14 },
+          text: "+14% fleet speed",
+        },
+      },
+    ],
+  },
+  {
+    id: "data-bloom",
+    title: "Subspace Data Bloom",
+    text: "Research stations report repeating signal harmonics from several surveyed systems.",
+    options: [
+      {
+        label: "Open the observatories",
+        text: "16 months: research stations produce more.",
+        modifier: {
+          id: "data-bloom-labs",
+          label: "Data Bloom",
+          duration: 16,
+          effects: { stationResearch: 0.24 },
+          text: "+24% research-station output",
+        },
+      },
+      {
+        label: "Embed survey teams",
+        text: "12 months: science ships survey faster.",
+        modifier: {
+          id: "data-bloom-surveys",
+          label: "Predictive Survey Models",
+          duration: 12,
+          effects: { surveySpeed: 0.22, anomalySafety: 0.08 },
+          text: "+22% survey speed, safer anomaly work",
+        },
+      },
+    ],
+  },
+  {
+    id: "micro-meteor",
+    title: "Micro-Meteor Season",
+    text: "A diffuse dust front crosses several hyperlanes. Civilian traffic slows, but shipyards can test new armor profiles.",
+    options: [
+      {
+        label: "Armor the patrol lanes",
+        text: "14 months: fleets survive combat better, but travel is slower.",
+        modifier: {
+          id: "meteor-armor",
+          label: "Meteor-Hardened Hulls",
+          duration: 14,
+          effects: { combatSurvival: 0.1, shipSpeed: -0.08 },
+          text: "+10% combat survival, -8% fleet speed",
+        },
+      },
+      {
+        label: "Prioritize convoy pilots",
+        text: "12 months: influence income rises as governors coordinate the response.",
+        modifier: {
+          id: "meteor-convoys",
+          label: "Convoy Emergency Powers",
+          duration: 12,
+          effects: { influence: 0.45 },
+          text: "+0.45 influence income",
+        },
+      },
+    ],
+  },
+  {
+    id: "migrant-convoy",
+    title: "Migrant Convoy",
+    text: "A civilian convoy asks to settle under Commonwealth charter after fleeing a failing habitat chain.",
+    options: [
+      {
+        label: "Welcome them",
+        text: "20 months: colony growth improves.",
+        modifier: {
+          id: "migrant-charter",
+          label: "Migrant Charter",
+          duration: 20,
+          effects: { growth: 0.18, unity: 0.08 },
+          text: "+18% growth, +8% unity output",
+        },
+      },
+      {
+        label: "Recruit specialists",
+        text: "16 months: labs and orbital research improve.",
+        modifier: {
+          id: "migrant-specialists",
+          label: "Specialist Intake",
+          duration: 16,
+          effects: { labs: 0.12, stationResearch: 0.12 },
+          text: "+12% lab and research-station output",
+        },
+      },
+    ],
+  },
+  {
+    id: "guild-rush",
+    title: "Prospector Guild Rush",
+    text: "Independent prospectors flood into newly charted belts and ask for temporary extraction licenses.",
+    options: [
+      {
+        label: "Issue broad licenses",
+        text: "15 months: mineral station output rises.",
+        modifier: {
+          id: "guild-licenses",
+          label: "Prospector Licenses",
+          duration: 15,
+          effects: { stationMinerals: 0.26 },
+          text: "+26% mining-station mineral output",
+        },
+      },
+      {
+        label: "Nationalize the finds",
+        text: "12 months: minerals improve and diplomacy gets more expensive.",
+        modifier: {
+          id: "guild-nationalized",
+          label: "Nationalized Claims",
+          duration: 12,
+          effects: { stationMinerals: 0.18, diplomacyCost: 0.08 },
+          text: "+18% minerals, +8% diplomacy costs",
+        },
+      },
+    ],
+  },
+  {
+    id: "naval-drills",
+    title: "Fleet Readiness Drills",
+    text: "Admiralty simulations identify weaknesses in starbase response times and emergency maneuvers.",
+    options: [
+      {
+        label: "Drill starbase crews",
+        text: "18 months: starbases gain defense.",
+        modifier: {
+          id: "starbase-drills",
+          label: "Starbase Drills",
+          duration: 18,
+          effects: { starbaseDefense: 3 },
+          text: "+3 starbase defense",
+        },
+      },
+      {
+        label: "Drill fleet captains",
+        text: "14 months: fleets take fewer combat losses.",
+        modifier: {
+          id: "captain-drills",
+          label: "Captain Drills",
+          duration: 14,
+          effects: { combatSurvival: 0.12 },
+          text: "+12% combat survival",
+        },
+      },
+    ],
+  },
+];
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const fmt = (value) => Math.floor(value).toLocaleString("en-US");
@@ -484,9 +717,11 @@ function randomBell() {
 function normalizeGalaxySettings(settings = {}) {
   const shape = GALAXY_SHAPES[settings.shape] ? settings.shape : DEFAULT_GALAXY.shape;
   const size = GALAXY_SIZES[settings.size] ? settings.size : DEFAULT_GALAXY.size;
+  const aiCount = clamp(Number.parseInt(settings.aiCount, 10) || DEFAULT_GALAXY.aiCount, 1, EMPIRE_TEMPLATES.length);
   return {
     shape,
     size,
+    aiCount,
     shapeLabel: GALAXY_SHAPES[shape].label,
     sizeLabel: GALAXY_SIZES[size].label,
     ...GALAXY_SIZES[size],
@@ -511,14 +746,16 @@ function createEmptyResources(values = {}) {
 function newGame(seed = Date.now(), galaxySettings = DEFAULT_GALAXY, options = {}) {
   const cleanSeed = Number.isFinite(Number(seed)) ? Number(seed) : Date.now();
   const galaxy = normalizeGalaxySettings(galaxySettings);
+  const aiTemplates = EMPIRE_TEMPLATES.slice(0, galaxy.aiCount);
   state = {
     seed: cleanSeed,
     rng: makeRng(cleanSeed),
     galaxy,
+    aiTemplates,
     menuOpen: Boolean(options.menuOpen),
     running: false,
     speedIndex: 0,
-    speeds: [1, 2, 4],
+    speeds: [0.5, 1, 2],
     month: 0,
     autoTimer: 0,
     mapMode: "political",
@@ -539,6 +776,10 @@ function newGame(seed = Date.now(), galaxySettings = DEFAULT_GALAXY, options = {
     }),
     lastIncome: createEmptyResources(),
     buildQueue: [],
+    timedModifiers: [],
+    eventCooldown: 22,
+    pirateCooldown: 40,
+    eventHistory: [],
     logs: [],
     modal: null,
     victory: null,
@@ -580,7 +821,7 @@ function newGame(seed = Date.now(), galaxySettings = DEFAULT_GALAXY, options = {
     stockpile: state.resources,
   };
 
-  for (const template of EMPIRE_TEMPLATES) {
+  for (const template of state.aiTemplates) {
     state.empires[template.id] = {
       ...template,
       homeSystemId: null,
@@ -921,12 +1162,12 @@ function assignHomeworlds() {
   playerHome.colony = createColony("player", playerHome.planet, true);
   state.empires.player.homeSystemId = playerHome.id;
 
-  const angles = [0.42, 2.08, 3.68, 5.12];
-  EMPIRE_TEMPLATES.forEach((template, index) => {
+  state.aiTemplates.forEach((template, index) => {
+    const angle = 0.42 + index * ((Math.PI * 2) / Math.max(1, state.aiTemplates.length));
     const radius = state.galaxy.scale * 0.74;
     const target = {
-      x: Math.cos(angles[index]) * radius,
-      y: Math.sin(angles[index]) * radius,
+      x: Math.cos(angle) * radius,
+      y: Math.sin(angle) * radius,
     };
     const home = state.systems
       .filter((system) => !system.owner && systemDistance(system, target) < state.galaxy.scale * 0.48)
@@ -1026,7 +1267,7 @@ function createFleets() {
     speed: 1.05,
   });
 
-  for (const template of EMPIRE_TEMPLATES) {
+  for (const template of state.aiTemplates) {
     state.fleets.push({
       id: `fleet-${template.id}`,
       name: `${template.adjective} Spear`,
@@ -1096,6 +1337,40 @@ function toast(text) {
   }, 2400);
 }
 
+function addTimedModifier(modifier) {
+  if (!modifier?.effects) return;
+  const activeId = `${modifier.id}-${state.month}-${state.timedModifiers.length}`;
+  for (const [key, value] of Object.entries(modifier.effects)) {
+    if (typeof state.modifiers[key] !== "number") continue;
+    state.modifiers[key] += value;
+  }
+  state.timedModifiers.push({
+    id: activeId,
+    label: modifier.label,
+    text: modifier.text,
+    effects: modifier.effects,
+    remaining: modifier.duration,
+    total: modifier.duration,
+  });
+  addLog(`${modifier.label} takes effect for ${modifier.duration} months.`, "major");
+}
+
+function processTimedModifiers() {
+  const expired = [];
+  for (const modifier of state.timedModifiers) {
+    modifier.remaining -= 1;
+    if (modifier.remaining <= 0) expired.push(modifier);
+  }
+  state.timedModifiers = state.timedModifiers.filter((modifier) => modifier.remaining > 0);
+  for (const modifier of expired) {
+    for (const [key, value] of Object.entries(modifier.effects)) {
+      if (typeof state.modifiers[key] !== "number") continue;
+      state.modifiers[key] -= value;
+    }
+    addLog(`${modifier.label} expires.`);
+  }
+}
+
 function updateKnownFromBorders() {
   for (const system of state.systems) {
     if (system.owner === "player") {
@@ -1152,6 +1427,7 @@ function tickMonth() {
   if (state.modal || state.victory?.ended || state.menuOpen) return;
   state.month += 1;
 
+  processTimedModifiers();
   processIncome();
   processResearch();
   processBuildQueue();
@@ -1372,6 +1648,13 @@ function openAnomaly(system) {
         effect: () => {
           state.tech.progress += safeBonus;
           state.resources.research = state.tech.progress;
+          addTimedModifier({
+            id: "controlled-study",
+            label: "Controlled Study Protocols",
+            duration: 10,
+            effects: { stationResearch: 0.08 },
+            text: "+8% research-station output",
+          });
           addLog(`The ${system.name} anomaly yields a controlled research cache.`, "science");
         },
       },
@@ -1383,12 +1666,26 @@ function openAnomaly(system) {
           if (safe) {
             state.tech.progress += riskyBonus;
             state.resources.minerals += Math.floor(riskyBonus * 0.32);
+            addTimedModifier({
+              id: "bold-survey-insights",
+              label: "Bold Survey Insights",
+              duration: 10,
+              effects: { surveySpeed: 0.14 },
+              text: "+14% science ship survey speed",
+            });
             addLog(`A bold anomaly project in ${system.name} pays off.`, "science");
           } else {
             const fleet = getFleetByRole("science");
             fleet.progress = 0;
             fleet.order = "idle";
             state.resources.energy = Math.max(0, state.resources.energy - 65);
+            addTimedModifier({
+              id: "scanner-caution",
+              label: "Scanner Caution",
+              duration: 8,
+              effects: { shipSpeed: -0.08 },
+              text: "-8% fleet speed",
+            });
             addLog(`The ${system.name} anomaly lashes the survey team and drains emergency reserves.`, "war");
           }
         },
@@ -1511,6 +1808,9 @@ function aiTakeTurn(empire) {
     fleet.ships += 1;
   }
 
+  if (aiDevelopStations(empire)) return;
+  if (aiDevelopColonies(empire)) return;
+
   const frontier = getEmpireFrontier(empire.id);
   if (frontier.length && empire.stockpile.influence > 50 && empire.stockpile.alloys > 75) {
     const target = frontier.sort((a, b) => scoreSystemForEmpire(b) - scoreSystemForEmpire(a))[0];
@@ -1525,6 +1825,48 @@ function aiTakeTurn(empire) {
       makeContact(empire.id);
     }
   }
+}
+
+function aiDevelopStations(empire) {
+  const owned = state.systems.filter((system) => system.owner === empire.id);
+  const stationTarget = owned
+    .filter(
+      (system) =>
+        (!system.stations.mining && system.deposits.energy + system.deposits.minerals > 0) ||
+        (!system.stations.research && system.deposits.research > 0)
+    )
+    .sort((a, b) => scoreSystemForEmpire(b) - scoreSystemForEmpire(a))[0];
+  if (!stationTarget || empire.stockpile.minerals < 90) return false;
+  const wantsResearch =
+    !stationTarget.stations.research &&
+    stationTarget.deposits.research > stationTarget.deposits.energy + stationTarget.deposits.minerals * 0.5;
+  if (wantsResearch && empire.stockpile.minerals >= 105) {
+    empire.stockpile.minerals -= 105;
+    stationTarget.stations.research = true;
+  } else if (!stationTarget.stations.mining) {
+    empire.stockpile.minerals -= 86;
+    stationTarget.stations.mining = true;
+  } else if (!stationTarget.stations.research && empire.stockpile.minerals >= 105) {
+    empire.stockpile.minerals -= 105;
+    stationTarget.stations.research = true;
+  } else {
+    return false;
+  }
+  if (stationTarget.known) addLog(`${empire.name} develops orbital infrastructure in ${stationTarget.name}.`);
+  return true;
+}
+
+function aiDevelopColonies(empire) {
+  if (empire.stockpile.energy < 130 || empire.stockpile.minerals < 190) return false;
+  const target = state.systems
+    .filter((system) => system.owner === empire.id && system.planet && !system.colony)
+    .sort((a, b) => b.planet.habitability + b.planet.size / 40 - (a.planet.habitability + a.planet.size / 40))[0];
+  if (!target || target.planet.habitability < 0.38) return false;
+  empire.stockpile.energy -= 120;
+  empire.stockpile.minerals -= 180;
+  target.colony = createColony(empire.id, target.planet, false);
+  if (target.known) addLog(`${empire.name} founds a colony on ${target.planet.name}.`);
+  return true;
 }
 
 function processDiplomaticDrift(empire) {
@@ -1602,9 +1944,38 @@ function borderFriction(empireId) {
 
 function processRandomEvents() {
   growColonies();
-  if (state.month > 20 && state.month % 15 === 0 && state.piratesSpawned < 4 && state.rng() < 0.5) {
-    spawnPirates();
+  state.eventCooldown -= 1;
+  state.pirateCooldown -= 1;
+
+  if (!state.modal && state.month > 18 && state.eventCooldown <= 0 && state.rng() < 0.25) {
+    openSpaceEvent();
+    state.eventCooldown = Math.floor(randRange(28, 44));
+    return;
   }
+
+  if (state.month > 42 && state.pirateCooldown <= 0 && state.piratesSpawned < 4 && state.rng() < 0.22) {
+    spawnPirates();
+    state.pirateCooldown = Math.floor(randRange(36, 54));
+  }
+}
+
+function openSpaceEvent() {
+  const recent = new Set(state.eventHistory.slice(-3));
+  const pool = SPACE_EVENTS.filter((event) => !recent.has(event.id));
+  const event = pick(pool.length ? pool : SPACE_EVENTS);
+  state.eventHistory.push(event.id);
+  if (state.eventHistory.length > 10) state.eventHistory.shift();
+
+  openDecision({
+    kicker: "Space Event",
+    title: event.title,
+    text: event.text,
+    options: event.options.map((option) => ({
+      label: option.label,
+      text: `${option.text} Modifier: ${option.modifier.text}.`,
+      effect: () => addTimedModifier(option.modifier),
+    })),
+  });
 }
 
 function growColonies() {
@@ -1649,6 +2020,13 @@ function spawnPirates() {
     speed: 0.95,
   });
   state.piratesSpawned += 1;
+  addTimedModifier({
+    id: "frontier-alert",
+    label: "Frontier Alert",
+    duration: 12,
+    effects: { shipSpeed: 0.08, unity: -0.06 },
+    text: "+8% fleet speed, -6% unity output",
+  });
   addLog(`Raiders are detected near ${system.name}.`, "war");
 }
 
@@ -1661,7 +2039,7 @@ function checkVictory() {
   if (state.victory) return;
   const playerSystems = state.systems.filter((system) => system.owner === "player").length;
   const playerColonies = state.systems.filter((system) => system.colony?.owner === "player").length;
-  const rivalsWithCapitals = EMPIRE_TEMPLATES.filter((template) => {
+  const rivalsWithCapitals = state.aiTemplates.filter((template) => {
     const homeId = state.empires[template.id].homeSystemId;
     return state.systems[homeId]?.owner === template.id;
   });
@@ -1765,20 +2143,20 @@ function selectedFleet() {
   return state.fleets.find((fleet) => fleet.id === state.selectedFleetId) || null;
 }
 
-function canSurvey(system) {
-  const fleet = getFleetByRole("science");
+function canSurvey(system, fleet = selectedFleet()) {
   return Boolean(
     system &&
       system.known &&
       !system.surveyedBy.player &&
       fleet &&
+      fleet.owner === "player" &&
+      fleet.role === "science" &&
       fleet.order === "idle" &&
       routeBetween(fleet.location, system.id, "player")
   );
 }
 
-function canBuildOutpost(system) {
-  const fleet = getFleetByRole("constructor");
+function canBuildOutpost(system, fleet = selectedFleet()) {
   const cost = getOutpostCost();
   return Boolean(
     system &&
@@ -1786,6 +2164,8 @@ function canBuildOutpost(system) {
       !system.owner &&
       adjacentToPlayer(system) &&
       fleet &&
+      fleet.owner === "player" &&
+      fleet.role === "constructor" &&
       fleet.order === "idle" &&
       canAfford(cost) &&
       routeBetween(fleet.location, system.id, "player")
@@ -1802,8 +2182,8 @@ function adjacentToPlayer(system) {
 
 function commandSurvey(systemId) {
   const system = state.systems[systemId];
-  const fleet = getFleetByRole("science");
-  if (!canSurvey(system)) return toast("Science ship is not ready for that survey.");
+  const fleet = selectedFleet();
+  if (!canSurvey(system, fleet)) return toast("Select an idle science ship for that survey.");
   if (setFleetCourse(fleet, system.id, "survey")) {
     addLog(`${fleet.name} departs to survey ${system.name}.`, "science");
   }
@@ -1812,9 +2192,9 @@ function commandSurvey(systemId) {
 
 function commandBuildOutpost(systemId) {
   const system = state.systems[systemId];
-  const fleet = getFleetByRole("constructor");
+  const fleet = selectedFleet();
   const cost = getOutpostCost();
-  if (!canBuildOutpost(system)) return toast("Outpost requirements are not met.");
+  if (!canBuildOutpost(system, fleet)) return toast("Select an idle constructor for that outpost.");
   spend(cost);
   if (setFleetCourse(fleet, system.id, "build-outpost")) {
     addLog(`${fleet.name} begins an outpost mission to ${system.name}.`);
@@ -1824,10 +2204,10 @@ function commandBuildOutpost(systemId) {
 
 function commandBuildStation(systemId, kind) {
   const system = state.systems[systemId];
-  const fleet = getFleetByRole("constructor");
+  const fleet = selectedFleet();
   const cost = kind === "mining" ? { minerals: 86 } : { minerals: 104 };
   const hasDeposits =
-    kind === "mining" ? system.deposits.energy + system.deposits.minerals > 0 : system.deposits.research > 0;
+    system && (kind === "mining" ? system.deposits.energy + system.deposits.minerals > 0 : system.deposits.research > 0);
   if (
     !system ||
     system.owner !== "player" ||
@@ -1835,10 +2215,13 @@ function commandBuildStation(systemId, kind) {
     system.stations[kind] ||
     !hasDeposits ||
     !fleet ||
+    fleet.owner !== "player" ||
+    fleet.role !== "constructor" ||
     fleet.order !== "idle" ||
-    !canAfford(cost)
+    !canAfford(cost) ||
+    !routeBetween(fleet.location, system.id, "player")
   ) {
-    return toast("Station requirements are not met.");
+    return toast("Select an idle constructor for that station.");
   }
   spend(cost);
   if (setFleetCourse(fleet, system.id, kind === "mining" ? "build-mining" : "build-research")) {
@@ -1849,9 +2232,10 @@ function commandBuildStation(systemId, kind) {
 
 function commandColonize(systemId) {
   const system = state.systems[systemId];
+  const fleet = selectedFleet();
   const cost = scaledCost({ energy: 110, minerals: 185, influence: 36 }, 1 + state.modifiers.colonyCost);
-  if (!system || system.owner !== "player" || !system.planet || system.colony || !canAfford(cost)) {
-    return toast("Colony mission requirements are not met.");
+  if (!canColonize(system, fleet)) {
+    return toast("Select an idle constructor to organize that colony mission.");
   }
   spend(cost);
   state.buildQueue.push({
@@ -1863,7 +2247,7 @@ function commandColonize(systemId) {
     remaining: 12,
     total: 12,
   });
-  addLog(`A colony ship is launched toward ${system.planet.name}.`, "major");
+  addLog(`${fleet.name} coordinates a colony ship launch toward ${system.planet.name}.`, "major");
   updateUI();
 }
 
@@ -1911,8 +2295,8 @@ function commandBuildShip(shipKey) {
 
 function commandAttack(systemId) {
   const system = state.systems[systemId];
-  const fleet = getPlayerNavy();
-  if (!system || !fleet || fleet.order !== "idle") return toast("Fleet is not ready.");
+  const fleet = selectedFleet();
+  if (!canAttack(system, fleet)) return toast("Select an idle combat fleet for that attack.");
 
   const pirateFleet = state.fleets.find((item) => item.owner === "pirates" && item.location === system.id);
   if (pirateFleet) {
@@ -2155,6 +2539,7 @@ function updateUI() {
   renderLog();
   renderModal();
   renderMainMenu();
+  renderTerritoryLegend();
 }
 
 function renderMainMenu() {
@@ -2179,15 +2564,18 @@ function syncMenuControls() {
   els.menuShape.value = state.galaxy?.shape || DEFAULT_GALAXY.shape;
   els.menuSize.value = state.galaxy?.size || DEFAULT_GALAXY.size;
   els.menuSeed.value = String(state.seed || randomSeed());
+  els.menuAiCount.value = String(state.galaxy?.aiCount || DEFAULT_GALAXY.aiCount);
 }
 
 function readMenuSettings() {
   const parsedSeed = Number.parseInt(els.menuSeed.value, 10);
+  const parsedAiCount = Number.parseInt(els.menuAiCount.value, 10);
   return {
     seed: Number.isFinite(parsedSeed) ? parsedSeed : randomSeed(),
     settings: {
       shape: els.menuShape.value,
       size: els.menuSize.value,
+      aiCount: Number.isFinite(parsedAiCount) ? parsedAiCount : DEFAULT_GALAXY.aiCount,
     },
   };
 }
@@ -2199,6 +2587,38 @@ function startMenuGame() {
 
 function randomizeMenuSeed() {
   els.menuSeed.value = String(randomSeed());
+}
+
+function visibleTerritoryOwners() {
+  const owners = new Map();
+  for (const system of state.systems) {
+    if (!system.owner || !ownerTerritoryVisible(system)) continue;
+    const empire = state.empires[system.owner];
+    if (!empire) continue;
+    const current = owners.get(empire.id) || { empire, systems: 0, colonies: 0 };
+    current.systems += 1;
+    if (system.colony?.owner === empire.id) current.colonies += 1;
+    owners.set(empire.id, current);
+  }
+  return [...owners.values()].sort((a, b) => (a.empire.id === "player" ? -1 : b.empire.id === "player" ? 1 : b.systems - a.systems));
+}
+
+function renderTerritoryLegend() {
+  const owners = visibleTerritoryOwners();
+  els.territoryLegend.hidden = state.mapMode === "science" || !owners.length;
+  if (els.territoryLegend.hidden) return;
+  els.territoryLegend.innerHTML = owners
+    .slice(0, 9)
+    .map(
+      ({ empire, systems, colonies }) => `
+        <div class="territory-legend-row">
+          <span class="territory-swatch" style="--owner-color:${empire.color}"></span>
+          <span class="territory-name">${escapeHtml(empire.name)}</span>
+          <span class="territory-count">${systems} sys${colonies ? ` / ${colonies} col` : ""}</span>
+        </div>
+      `
+    )
+    .join("");
 }
 
 function renderResources() {
@@ -2241,6 +2661,7 @@ function renderEmpirePanel() {
     <div class="subhead">Ascendancy</div>
     <div class="meter" title="Victory progress"><span style="width:${clamp(victory * 100, 4, 100)}%"></span></div>
     <div class="small-note" style="margin-top:7px">Control 34 systems, settle 8 colonies, or take every rival capital.</div>
+    ${renderActiveModifiers()}
     <div class="subhead">Shipyard</div>
     <div class="action-grid">
       ${shipButton("corvette")}
@@ -2270,6 +2691,27 @@ function renderEmpirePanel() {
       <span><span class="fleet-name">${escapeHtml(home.name)}</span><span class="fleet-status">${escapeHtml(home.colony.name)}</span></span>
       <span class="mini-tag">Seat</span>
     </button>
+  `;
+}
+
+function renderActiveModifiers() {
+  if (!state.timedModifiers.length) return "";
+  return `
+    <div class="subhead">Active Effects</div>
+    <div class="queue-list">
+      ${state.timedModifiers
+        .slice(0, 4)
+        .map(
+          (modifier) => `
+            <div class="queue-row">
+              <strong>${escapeHtml(modifier.label)}</strong>
+              <div class="meter"><span style="width:${clamp((modifier.remaining / modifier.total) * 100, 2, 100)}%"></span></div>
+              <div class="queue-meta">${escapeHtml(modifier.text)} - ${modifier.remaining} months</div>
+            </div>
+          `
+        )
+        .join("")}
+    </div>
   `;
 }
 
@@ -2333,10 +2775,7 @@ function renderFleetOrders() {
   const moveDisabled = !system || fleet.order !== "idle" || (fleet.location === system.id && !fleet.route.length);
   const homeId = state.empires.player.homeSystemId;
   const returnDisabled = fleet.location === homeId && !fleet.route.length;
-  const surveyButton =
-    fleet.role === "science" && system
-      ? actionButton("Survey", "survey-system", { system: system.id }, !canSurvey(system), "primary")
-      : "";
+  const roleOrders = renderShipRoleOrders(fleet, system);
   return `
     <div class="subhead">Ship Orders</div>
     <div class="fleet-order-card">
@@ -2347,7 +2786,7 @@ function renderFleetOrders() {
         <span class="mini-tag">${fleet.route.length ? `${fleet.route.length} jumps` : "Local orbit"}</span>
       </div>
       <div class="action-grid">
-        ${surveyButton}
+        ${roleOrders}
         ${actionButton("Move Here", "move-selected-fleet", { system: system?.id ?? "" }, moveDisabled, "primary")}
         ${actionButton("Return Home", "return-fleet", {}, returnDisabled, "")}
         ${actionButton("Hold", "hold-fleet", {}, fleet.order === "idle" && !fleet.route.length, "")}
@@ -2355,6 +2794,25 @@ function renderFleetOrders() {
       </div>
     </div>
   `;
+}
+
+function renderShipRoleOrders(fleet, system) {
+  if (!system) return "";
+  if (fleet.role === "science") {
+    return actionButton("Survey", "survey-system", { system: system.id }, !canSurvey(system, fleet), "primary");
+  }
+  if (fleet.role === "constructor") {
+    return `
+      ${actionButton("Outpost", "build-outpost", { system: system.id }, !canBuildOutpost(system, fleet), "primary")}
+      ${actionButton("Mining Station", "build-mining", { system: system.id }, !canBuildMining(system, fleet), "")}
+      ${actionButton("Research Station", "build-research", { system: system.id }, !canBuildResearch(system, fleet), "")}
+      ${actionButton("Colonize", "colonize", { system: system.id }, !canColonize(system, fleet), "primary")}
+    `;
+  }
+  if (fleet.role === "navy") {
+    return actionButton("Attack", "attack-system", { system: system.id }, !canAttack(system, fleet), "danger");
+  }
+  return "";
 }
 
 function orderLabel(order) {
@@ -2454,28 +2912,8 @@ function renderInspector() {
       </div>
     </div>
     ${renderSystemMap(system)}
+    ${renderSystemProgress(system)}
     ${renderColonyBlock(system)}
-    <div class="subhead">Orders</div>
-    <div class="action-grid">
-      ${actionButton("Survey", "survey-system", { system: system.id }, !canSurvey(system), "primary")}
-      ${actionButton("Outpost", "build-outpost", { system: system.id }, !canBuildOutpost(system), "primary")}
-      ${actionButton(
-        "Mining Station",
-        "build-mining",
-        { system: system.id },
-        !canBuildMining(system),
-        ""
-      )}
-      ${actionButton(
-        "Research Station",
-        "build-research",
-        { system: system.id },
-        !canBuildResearch(system),
-        ""
-      )}
-      ${actionButton("Colonize", "colonize", { system: system.id }, !canColonize(system), "primary")}
-      ${actionButton("Attack", "attack-system", { system: system.id }, !canAttack(system), "danger")}
-    </div>
   `;
 }
 
@@ -2494,13 +2932,34 @@ function renderSystemMap(system) {
           )
           .join("")}
         <span class="system-star" title="${escapeHtml(system.star.code)} class star"></span>
+        ${system.starbase ? renderStarbaseNode(system) : ""}
         ${bodies.map((body) => renderSystemBody(system, body, selected?.id === body.id)).join("")}
-        ${system.stations.mining ? `<span class="station-node mining" title="Mining station">MIN</span>` : ""}
-        ${system.stations.research ? `<span class="station-node research" title="Research station">LAB</span>` : ""}
+        ${system.stations.mining ? renderStationNode("mining") : ""}
+        ${system.stations.research ? renderStationNode("research") : ""}
         ${fleets.map((fleet, index) => renderSystemShip(system, fleet, index)).join("")}
       </div>
       ${renderBodyReadout(system, selected)}
     </div>
+  `;
+}
+
+function renderStarbaseNode(system) {
+  const owner = state.empires[system.starbase.owner];
+  const title = `${owner?.adjective || "Local"} starbase`;
+  return `
+    <span class="starbase-node" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">
+      ${renderInstallIcon("starbase", title, { color: owner?.color || INFRASTRUCTURE_META.starbase.color })}
+    </span>
+  `;
+}
+
+function renderStationNode(kind) {
+  const type = kind === "mining" ? "miningStation" : "researchStation";
+  const meta = INFRASTRUCTURE_META[type];
+  return `
+    <span class="station-node ${kind}" title="${escapeHtml(meta.label)}" aria-label="${escapeHtml(meta.label)}">
+      ${renderInstallIcon(type, meta.label)}
+    </span>
   `;
 }
 
@@ -2520,8 +2979,44 @@ function renderSystemBody(system, body, isSelected) {
       data-body="${escapeHtml(body.id)}"
       title="${escapeHtml(body.name)}"
       aria-label="${escapeHtml(body.name)}"
-    ></button>
+    >
+      ${renderBodyInstallations(system, body)}
+    </button>
   `;
+}
+
+function renderBodyInstallations(system, body) {
+  const icons = [];
+  const stationAnchor = stationAnchorBody(system, "research");
+
+  if (body.colonySite) {
+    if (system.colony) {
+      const owner = state.empires[system.colony.owner];
+      icons.push(
+        renderInstallIcon("colony", `${system.colony.name} colony`, {
+          color: owner?.color || INFRASTRUCTURE_META.colony.color,
+        })
+      );
+      for (const [key, count] of Object.entries(system.colony.buildings)) {
+        if (count > 0) icons.push(renderInstallIcon(key, `${INFRASTRUCTURE_META[key].label} x${count}`, { count }));
+      }
+    } else if (system.planet && system.surveyedBy.player) {
+      const pending = findBuildQueueItem(system, "colony");
+      icons.push(renderInstallIcon(pending ? "colonyMission" : "colonySite", pending ? "Colony mission in progress" : "Colony candidate"));
+    }
+  }
+
+  if (body.belt && system.stations.mining) icons.push(renderInstallIcon("miningStation", "Mining station"));
+  if (stationAnchor?.id === body.id && system.stations.research) icons.push(renderInstallIcon("researchStation", "Research station"));
+
+  return icons.length ? `<span class="body-installations">${icons.join("")}</span>` : "";
+}
+
+function renderInstallIcon(type, title, options = {}) {
+  const meta = INFRASTRUCTURE_META[type] || INFRASTRUCTURE_META.starbase;
+  const color = options.color || meta.color;
+  const count = options.count && options.count > 1 ? `<span class="install-count">${fmt(options.count)}</span>` : "";
+  return `<span class="install-icon ${type}" style="--icon-color:${escapeHtml(color)}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">${count}</span>`;
 }
 
 function renderSystemShip(system, fleet, index) {
@@ -2569,11 +3064,193 @@ function renderBodyReadout(system, body) {
   `;
 }
 
+function renderSystemProgress(system) {
+  const rows = systemProgressRows(system);
+  if (!rows.length) return "";
+  return `
+    <div class="subhead">System Progress</div>
+    <div class="system-progress-grid">
+      ${rows.map(renderProgressRow).join("")}
+    </div>
+  `;
+}
+
+function renderProgressRow(row) {
+  const pct = clamp(row.progress * 100, row.progress > 0 ? 2 : 0, 100);
+  return `
+    <div class="system-progress-row ${row.complete ? "is-complete" : ""} ${row.muted ? "is-muted" : ""}">
+      <div class="progress-copy">
+        <span>${escapeHtml(row.label)}</span>
+        <small>${escapeHtml(row.status)}</small>
+      </div>
+      <div class="system-progress-meter" title="${escapeHtml(`${row.label}: ${Math.round(pct)}%`)}">
+        <span style="width:${pct}%; --meter-color:${escapeHtml(row.color)}"></span>
+      </div>
+    </div>
+  `;
+}
+
+function systemProgressRows(system) {
+  const rows = [];
+  const owner = system.owner ? state.empires[system.owner] : null;
+  const surveyFleet = fleetOrderForSystem(system, "survey");
+  const outpostFleet = fleetOrderForSystem(system, "build-outpost");
+  const miningFleet = fleetOrderForSystem(system, "build-mining");
+  const researchFleet = fleetOrderForSystem(system, "build-research");
+  const colonyQueue = findBuildQueueItem(system, "colony");
+  const miningDeposits = system.deposits.energy + system.deposits.minerals;
+  const researchDeposits = system.deposits.research;
+
+  rows.push({
+    label: "Survey",
+    status: system.surveyedBy.player ? "Complete" : surveyFleet ? `${surveyFleet.name} en route` : "Unsurveyed",
+    progress: system.surveyedBy.player ? 1 : fleetOrderProgress(surveyFleet),
+    color: INFRASTRUCTURE_META.researchStation.color,
+    complete: system.surveyedBy.player,
+  });
+
+  rows.push({
+    label: "Outpost",
+    status: owner ? owner.name : outpostFleet ? `${outpostFleet.name} en route` : "Unclaimed",
+    progress: system.owner ? 1 : fleetOrderProgress(outpostFleet),
+    color: owner?.color || INFRASTRUCTURE_META.starbase.color,
+    complete: Boolean(system.owner),
+  });
+
+  rows.push({
+    label: "Colony",
+    status: system.colony
+      ? `${system.colony.name} founded`
+      : colonyQueue
+        ? `${colonyQueue.remaining} months remaining`
+        : system.planet
+          ? "Available site"
+          : "No colony site",
+    progress: system.colony ? 1 : buildQueueProgress(colonyQueue),
+    color: system.colony ? ownerColor(system.colony.owner, INFRASTRUCTURE_META.colony.color) : INFRASTRUCTURE_META.colonySite.color,
+    complete: Boolean(system.colony),
+    muted: !system.planet,
+  });
+
+  rows.push({
+    label: "Mining Station",
+    status: system.stations.mining
+      ? "Online"
+      : miningFleet
+        ? `${miningFleet.name} en route`
+        : miningDeposits > 0
+          ? `${miningDeposits} extractable deposits`
+          : "No deposits",
+    progress: system.stations.mining ? 1 : fleetOrderProgress(miningFleet),
+    color: INFRASTRUCTURE_META.miningStation.color,
+    complete: system.stations.mining,
+    muted: miningDeposits <= 0,
+  });
+
+  rows.push({
+    label: "Research Station",
+    status: system.stations.research
+      ? "Online"
+      : researchFleet
+        ? `${researchFleet.name} en route`
+        : researchDeposits > 0
+          ? `${researchDeposits} research deposits`
+          : "No deposits",
+    progress: system.stations.research ? 1 : fleetOrderProgress(researchFleet),
+    color: INFRASTRUCTURE_META.researchStation.color,
+    complete: system.stations.research,
+    muted: researchDeposits <= 0,
+  });
+
+  if (system.owner || system.danger > 0) {
+    const defense = system.owner ? getSystemDefense(system, system.owner) : system.danger;
+    rows.push({
+      label: "Defense",
+      status: `${fmt(defense)} strength`,
+      progress: clamp(defense / 42, 0, 1),
+      color: defense > 24 ? "#ec6a64" : defense > 11 ? "#f2b84b" : "#c5d5dc",
+      complete: defense >= 42,
+    });
+  }
+
+  if (system.colony) {
+    const colony = system.colony;
+    rows.push({
+      label: "Growth",
+      status: `${Math.round(colony.growth * 100)}% toward next pop`,
+      progress: colony.growth,
+      color: INFRASTRUCTURE_META.colony.color,
+    });
+    rows.push({
+      label: "Stability",
+      status: `${fmt(colony.stability)} stability`,
+      progress: colony.stability / 100,
+      color: colony.stability >= 65 ? "#67d38f" : colony.stability >= 45 ? "#f2b84b" : "#ec6a64",
+    });
+
+    for (const [key, build] of Object.entries(PLANET_BUILDS)) {
+      const count = colony.buildings[key] || 0;
+      const queued = findBuildQueueItem(system, "planet", key);
+      const benchmark = buildingBenchmark(system);
+      const queuedProgress = buildQueueProgress(queued);
+      rows.push({
+        label: build.label,
+        status: `${count}/${benchmark}${queued ? ` - building ${Math.round(queuedProgress * 100)}%` : ""}`,
+        progress: clamp((count + queuedProgress) / benchmark, 0, 1),
+        color: INFRASTRUCTURE_META[key].color,
+        complete: count >= benchmark,
+      });
+    }
+  }
+
+  return rows;
+}
+
 function bodyPosition(body) {
   return {
     x: 50 + Math.cos(body.angle) * body.orbit,
     y: 50 + Math.sin(body.angle) * body.orbit,
   };
+}
+
+function stationAnchorBody(system, kind) {
+  const bodies = system.bodies || [];
+  if (!bodies.length) return null;
+  if (kind === "mining") return bodies.find((body) => body.belt) || bodies[bodies.length - 1];
+  return bodies.find((body) => !body.colonySite && !body.belt) || bodies.find((body) => !body.belt) || bodies[0];
+}
+
+function findBuildQueueItem(system, type, building = null) {
+  return state.buildQueue.find(
+    (item) =>
+      item.systemId === system.id &&
+      item.type === type &&
+      (!building || item.building === building) &&
+      item.owner === "player"
+  );
+}
+
+function buildQueueProgress(item) {
+  if (!item?.total) return 0;
+  return clamp((item.total - item.remaining) / item.total, 0, 1);
+}
+
+function fleetOrderForSystem(system, order) {
+  return state.fleets.find((fleet) => fleet.owner === "player" && fleet.target === system.id && fleet.order === order);
+}
+
+function fleetOrderProgress(fleet) {
+  if (!fleet) return 0;
+  if (!fleet.route.length) return fleet.location === fleet.target ? 1 : 0;
+  return clamp(fleet.progress / Math.max(fleet.segmentMonths, 1), 0, 0.96);
+}
+
+function buildingBenchmark(system) {
+  return clamp(Math.round((system.planet?.size || 14) / 4), 3, 6);
+}
+
+function ownerColor(owner, fallback = "#ecf4f7") {
+  return state.empires[owner]?.color || fallback;
 }
 
 function systemLocalFleets(system) {
@@ -2621,40 +3298,55 @@ function actionButton(label, action, data, disabled, tone = "") {
   return `<button class="action-button ${tone}" data-action="${action}" ${attrs} ${disabled ? "disabled" : ""}>${escapeHtml(label)}</button>`;
 }
 
-function canBuildMining(system) {
-  const fleet = getFleetByRole("constructor");
+function canBuildMining(system, fleet = selectedFleet()) {
   return Boolean(
     system &&
       system.owner === "player" &&
       system.surveyedBy.player &&
       !system.stations.mining &&
       system.deposits.energy + system.deposits.minerals > 0 &&
-      fleet?.order === "idle" &&
-      canAfford({ minerals: 86 })
+      fleet?.owner === "player" &&
+      fleet.role === "constructor" &&
+      fleet.order === "idle" &&
+      canAfford({ minerals: 86 }) &&
+      routeBetween(fleet.location, system.id, "player")
   );
 }
 
-function canBuildResearch(system) {
-  const fleet = getFleetByRole("constructor");
+function canBuildResearch(system, fleet = selectedFleet()) {
   return Boolean(
     system &&
       system.owner === "player" &&
       system.surveyedBy.player &&
       !system.stations.research &&
       system.deposits.research > 0 &&
-      fleet?.order === "idle" &&
-      canAfford({ minerals: 104 })
+      fleet?.owner === "player" &&
+      fleet.role === "constructor" &&
+      fleet.order === "idle" &&
+      canAfford({ minerals: 104 }) &&
+      routeBetween(fleet.location, system.id, "player")
   );
 }
 
-function canColonize(system) {
+function canColonize(system, fleet = null) {
   const cost = scaledCost({ energy: 110, minerals: 185, influence: 36 }, 1 + state.modifiers.colonyCost);
-  return Boolean(system && system.owner === "player" && system.planet && !system.colony && canAfford(cost));
+  return Boolean(
+    system &&
+      system.owner === "player" &&
+      system.planet &&
+      !system.colony &&
+      canAfford(cost) &&
+      (!fleet ||
+        (fleet.owner === "player" &&
+          fleet.role === "constructor" &&
+          fleet.order === "idle" &&
+          routeBetween(fleet.location, system.id, "player")))
+  );
 }
 
-function canAttack(system) {
-  const fleet = getPlayerNavy();
-  if (!system || !fleet || fleet.order !== "idle") return false;
+function canAttack(system, fleet = selectedFleet()) {
+  if (!system || !fleet || fleet.owner !== "player" || fleet.role !== "navy" || fleet.order !== "idle") return false;
+  if (!routeBetween(fleet.location, system.id, "player")) return false;
   if (state.fleets.some((item) => item.owner === "pirates" && item.location === system.id)) return true;
   if (!system.owner || system.owner === "player") return false;
   return Boolean(state.contacts[system.owner]?.war);
@@ -2771,7 +3463,7 @@ function drawGalaxy(time) {
   drawHyperlanes();
   drawTerritory();
   drawSystems(time);
-  drawFleetRoutes();
+  drawFleetRoutes(time);
   drawFleets(time);
   drawSelection();
 }
@@ -2826,20 +3518,135 @@ function drawHyperlanes() {
 
 function drawTerritory() {
   if (state.mapMode === "science") return;
+  drawTerritoryLinks();
   for (const system of state.systems) {
-    if (!system.owner || (!system.known && system.owner !== "player")) continue;
+    if (!system.owner || !ownerTerritoryVisible(system)) continue;
     const empire = state.empires[system.owner];
     if (!empire) continue;
     const p = worldToScreen(system.x, system.y);
-    const radius = (system.colony ? 44 : 34) * state.camera.zoom;
+    const radius = (system.colony ? 70 : 54) * clamp(state.camera.zoom, 0.35, 1.25);
     const gradient = ctx.createRadialGradient(p.x, p.y, 2, p.x, p.y, radius);
-    gradient.addColorStop(0, `${hexToRgba(empire.color, 0.18)}`);
+    gradient.addColorStop(0, `${hexToRgba(empire.color, 0.3)}`);
+    gradient.addColorStop(0.52, `${hexToRgba(empire.color, 0.13)}`);
     gradient.addColorStop(1, `${hexToRgba(empire.color, 0)}`);
     ctx.fillStyle = gradient;
     ctx.beginPath();
     ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
     ctx.fill();
+    ctx.strokeStyle = hexToRgba(empire.color, system.owner === "player" ? 0.52 : 0.38);
+    ctx.lineWidth = system.owner === "player" ? 1.5 : 1.1;
+    ctx.setLineDash(system.owner === "player" ? [] : [4, 5]);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, radius * 0.62, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
   }
+  drawFactionBorders();
+}
+
+function drawTerritoryLinks() {
+  ctx.save();
+  ctx.lineCap = "round";
+  for (const system of state.systems) {
+    if (!system.owner || !ownerTerritoryVisible(system)) continue;
+    const empire = state.empires[system.owner];
+    if (!empire) continue;
+    for (const neighborId of system.hyperlanes) {
+      if (neighborId < system.id) continue;
+      const neighbor = state.systems[neighborId];
+      if (neighbor.owner !== system.owner || !ownerTerritoryVisible(neighbor)) continue;
+      const a = worldToScreen(system.x, system.y);
+      const b = worldToScreen(neighbor.x, neighbor.y);
+      ctx.strokeStyle = hexToRgba(empire.color, system.owner === "player" ? 0.25 : 0.17);
+      ctx.lineWidth = clamp(13 * state.camera.zoom, 4, 16);
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+function ownerTerritoryVisible(system) {
+  if (!system?.owner) return false;
+  if (system.owner === "player") return true;
+  return Boolean(system.known || system.surveyedBy.player || state.contacts[system.owner]?.met);
+}
+
+function drawFactionBorders() {
+  if (state.mapMode === "science") return;
+  ctx.save();
+  ctx.lineCap = "round";
+  for (const system of state.systems) {
+    if (!system.owner || !ownerTerritoryVisible(system)) continue;
+    for (const neighborId of system.hyperlanes) {
+      if (neighborId < system.id) continue;
+      const neighbor = state.systems[neighborId];
+      if (!isVisibleBorderNeighbor(system, neighbor)) continue;
+      if (neighbor.owner === system.owner) continue;
+      drawBorderGate(system, neighbor);
+    }
+  }
+  ctx.restore();
+}
+
+function isVisibleBorderNeighbor(system, neighbor) {
+  if (neighbor.owner) return ownerTerritoryVisible(neighbor);
+  return Boolean(neighbor.known || neighbor.surveyedBy.player || system.owner === "player");
+}
+
+function drawBorderGate(system, neighbor) {
+  const a = worldToScreen(system.x, system.y);
+  const b = worldToScreen(neighbor.x, neighbor.y);
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const distance = Math.hypot(dx, dy);
+  if (distance < 1) return;
+  const nx = -dy / distance;
+  const ny = dx / distance;
+  const borderT = neighbor.owner ? 0.5 : 0.62;
+  const mx = a.x + dx * borderT;
+  const my = a.y + dy * borderT;
+  const width = clamp(34 * state.camera.zoom, 15, 42);
+  const colorA = state.empires[system.owner]?.color || "#ffffff";
+  const colorB = neighbor.owner ? state.empires[neighbor.owner]?.color || "#ffffff" : "#87949b";
+
+  ctx.strokeStyle = "rgba(1, 3, 7, 0.9)";
+  ctx.lineWidth = 7;
+  ctx.beginPath();
+  ctx.moveTo(mx - nx * width, my - ny * width);
+  ctx.lineTo(mx + nx * width, my + ny * width);
+  ctx.stroke();
+
+  ctx.lineWidth = 3.2;
+  ctx.strokeStyle = colorA;
+  ctx.beginPath();
+  ctx.moveTo(mx - nx * width, my - ny * width);
+  ctx.lineTo(mx, my);
+  ctx.stroke();
+
+  ctx.strokeStyle = colorB;
+  ctx.beginPath();
+  ctx.moveTo(mx, my);
+  ctx.lineTo(mx + nx * width, my + ny * width);
+  ctx.stroke();
+
+  ctx.fillStyle = "rgba(5, 8, 11, 0.96)";
+  ctx.strokeStyle = neighbor.owner ? "#eef7fa" : "rgba(197, 213, 220, 0.8)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(mx, my, clamp(3.2 * state.camera.zoom + 2, 3.5, 6), 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+}
+
+function hasFactionBorder(system) {
+  if (!system.owner || !ownerTerritoryVisible(system)) return false;
+  return system.hyperlanes.some((neighborId) => {
+    const neighbor = state.systems[neighborId];
+    return neighbor.owner !== system.owner && isVisibleBorderNeighbor(system, neighbor);
+  });
 }
 
 function drawSystems(time) {
@@ -2865,12 +3672,22 @@ function drawSystems(time) {
     if (system.owner && state.mapMode === "political") {
       const empire = state.empires[system.owner];
       if (empire) {
+        const borderSystem = hasFactionBorder(system);
         ctx.strokeStyle = empire.color;
-        ctx.lineWidth = system.owner === "player" ? 1.9 : 1.3;
-        ctx.globalAlpha = 0.78;
+        ctx.lineWidth = borderSystem ? (system.owner === "player" ? 2.8 : 2.3) : system.owner === "player" ? 1.9 : 1.3;
+        ctx.globalAlpha = borderSystem ? 0.94 : 0.78;
         ctx.beginPath();
         ctx.arc(p.x, p.y, radius + 8, 0, Math.PI * 2);
         ctx.stroke();
+        if (borderSystem) {
+          ctx.strokeStyle = "rgba(255,255,255,0.7)";
+          ctx.lineWidth = 1;
+          ctx.setLineDash([3, 4]);
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, radius + 13, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
         ctx.globalAlpha = 1;
       }
     }
@@ -2918,9 +3735,10 @@ function drawSystems(time) {
     ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
     ctx.fill();
 
-    if (system.colony) {
-      ctx.fillStyle = system.colony.owner === "player" ? "#ecf4f7" : state.empires[system.colony.owner]?.color || "#ecf4f7";
-      ctx.fillRect(p.x - 3, p.y + radius + 5, 6, 6);
+    drawSystemInfrastructure(system, p, radius, time);
+
+    if (state.mapMode === "political" && system.owner && ownerTerritoryVisible(system)) {
+      drawOwnerBadge(system, p, radius);
     }
 
     if (state.camera.zoom > 0.42 || system.owner === "player" || system.id === state.selectedSystemId) {
@@ -2930,6 +3748,238 @@ function drawSystems(time) {
       ctx.fillText(system.name, p.x, p.y - radius - 9);
     }
   }
+}
+
+function drawSystemInfrastructure(system, p, radius, time) {
+  if (!shouldDrawInfrastructure(system)) return;
+  const selected = system.id === state.selectedSystemId;
+  const showFullBuildings = state.camera.zoom > 0.9 || (selected && state.camera.zoom > 0.78);
+  const icons = systemInfrastructureIcons(system, {
+    includeBuildings: showFullBuildings,
+    compactBuildings: !showFullBuildings,
+    includeColonySite: selected || state.camera.zoom > 0.58,
+  });
+  if (!icons.length) return;
+
+  const iconLimit = selected ? 9 : state.camera.zoom > 0.68 ? 8 : 6;
+  const visibleIcons = icons.slice(0, iconLimit);
+  const scale = clamp(state.camera.zoom, 0.5, 1.25);
+  const size = clamp(7 + scale * 4, 8, 12);
+  const gap = 2.5;
+  const perRow = Math.min(4, visibleIcons.length);
+  const rows = Math.ceil(visibleIcons.length / perRow);
+  const startY = p.y + radius + 8;
+
+  visibleIcons.forEach((icon, index) => {
+    const row = Math.floor(index / perRow);
+    const col = index % perRow;
+    const rowCount = row === rows - 1 ? visibleIcons.length - row * perRow : perRow;
+    const rowWidth = rowCount * size + Math.max(0, rowCount - 1) * gap;
+    const x = p.x - rowWidth / 2 + size / 2 + col * (size + gap);
+    const y = startY + row * (size + gap);
+    drawGalaxyInfrastructureIcon(icon, x, y, size, time + index * 120);
+  });
+}
+
+function shouldDrawInfrastructure(system) {
+  const known = system.known || system.surveyedBy.player || system.owner === "player";
+  if (!known) return false;
+  if (system.id === state.selectedSystemId || system.owner === "player") return true;
+  return state.camera.zoom > 0.36;
+}
+
+function systemInfrastructureIcons(system, options = {}) {
+  const includeBuildings = options.includeBuildings === true;
+  const compactBuildings = Boolean(options.compactBuildings);
+  const includeColonySite = Boolean(options.includeColonySite);
+  const icons = [];
+
+  if (system.starbase) {
+    icons.push({
+      type: "starbase",
+      label: INFRASTRUCTURE_META.starbase.label,
+      color: ownerColor(system.starbase.owner, INFRASTRUCTURE_META.starbase.color),
+    });
+  }
+
+  if (system.colony) {
+    icons.push({
+      type: "colony",
+      label: system.colony.name,
+      color: ownerColor(system.colony.owner, INFRASTRUCTURE_META.colony.color),
+    });
+  } else if (findBuildQueueItem(system, "colony")) {
+    icons.push({ type: "colonyMission", label: INFRASTRUCTURE_META.colonyMission.label, color: INFRASTRUCTURE_META.colonyMission.color });
+  } else if (includeColonySite && system.planet && system.surveyedBy.player) {
+    icons.push({ type: "colonySite", label: INFRASTRUCTURE_META.colonySite.label, color: INFRASTRUCTURE_META.colonySite.color });
+  }
+
+  if (system.stations.mining) {
+    icons.push({
+      type: "miningStation",
+      label: INFRASTRUCTURE_META.miningStation.label,
+      color: INFRASTRUCTURE_META.miningStation.color,
+    });
+  }
+  if (system.stations.research) {
+    icons.push({
+      type: "researchStation",
+      label: INFRASTRUCTURE_META.researchStation.label,
+      color: INFRASTRUCTURE_META.researchStation.color,
+    });
+  }
+
+  if (system.colony && compactBuildings) {
+    const totalBuildings = Object.values(system.colony.buildings).reduce((sum, count) => sum + count, 0);
+    if (totalBuildings > 0) {
+      icons.push({
+        type: "city",
+        label: "Colony buildings",
+        color: INFRASTRUCTURE_META.city.color,
+        count: totalBuildings,
+      });
+    }
+  } else if (includeBuildings && system.colony) {
+    for (const [key, count] of Object.entries(system.colony.buildings)) {
+      if (count <= 0) continue;
+      icons.push({
+        type: key,
+        label: INFRASTRUCTURE_META[key].label,
+        color: INFRASTRUCTURE_META[key].color,
+        count,
+      });
+    }
+  }
+
+  return icons;
+}
+
+function drawGalaxyInfrastructureIcon(icon, x, y, size, time) {
+  const pulse = icon.type === "colonyMission" ? 1 + Math.sin(time / 360) * 0.08 : 1;
+  const frameRadius = (size * 0.62) * pulse;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.fillStyle = "rgba(3, 6, 11, 0.86)";
+  ctx.strokeStyle = hexToRgba(icon.color, 0.78);
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(0, 0, frameRadius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = icon.color;
+  ctx.strokeStyle = icon.color;
+  drawInfrastructureShape(icon.type, size * 0.72);
+  if (icon.count > 1 && size >= 10) {
+    ctx.font = "7px Inter, Segoe UI, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#071018";
+    ctx.fillText(Math.min(9, icon.count), size * 0.35, size * 0.31);
+  }
+  ctx.restore();
+}
+
+function drawInfrastructureShape(type, size) {
+  const s = size;
+  if (type === "starbase") {
+    ctx.beginPath();
+    ctx.moveTo(0, -s * 0.44);
+    ctx.lineTo(s * 0.4, -s * 0.12);
+    ctx.lineTo(s * 0.26, s * 0.42);
+    ctx.lineTo(-s * 0.26, s * 0.42);
+    ctx.lineTo(-s * 0.4, -s * 0.12);
+    ctx.closePath();
+    ctx.fill();
+    return;
+  }
+  if (type === "colony" || type === "colonyMission" || type === "colonySite") {
+    ctx.beginPath();
+    ctx.arc(0, s * 0.1, s * 0.38, Math.PI, Math.PI * 2);
+    ctx.lineTo(s * 0.42, s * 0.36);
+    ctx.lineTo(-s * 0.42, s * 0.36);
+    ctx.closePath();
+    if (type === "colonySite") ctx.stroke();
+    else ctx.fill();
+    return;
+  }
+  if (type === "miningStation" || type === "mining") {
+    ctx.save();
+    ctx.rotate(Math.PI / 4);
+    ctx.fillRect(-s * 0.28, -s * 0.28, s * 0.56, s * 0.56);
+    ctx.restore();
+    return;
+  }
+  if (type === "researchStation" || type === "lab") {
+    ctx.lineWidth = Math.max(1, s * 0.13);
+    ctx.beginPath();
+    ctx.moveTo(0, -s * 0.34);
+    ctx.lineTo(s * 0.34, s * 0.28);
+    ctx.lineTo(-s * 0.34, s * 0.28);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(0, -s * 0.34, s * 0.13, 0, Math.PI * 2);
+    ctx.arc(s * 0.34, s * 0.28, s * 0.13, 0, Math.PI * 2);
+    ctx.arc(-s * 0.34, s * 0.28, s * 0.13, 0, Math.PI * 2);
+    ctx.fill();
+    return;
+  }
+  if (type === "generator") {
+    ctx.beginPath();
+    ctx.moveTo(s * 0.1, -s * 0.48);
+    ctx.lineTo(s * 0.42, -s * 0.48);
+    ctx.lineTo(s * 0.08, -s * 0.02);
+    ctx.lineTo(s * 0.42, -s * 0.02);
+    ctx.lineTo(-s * 0.16, s * 0.5);
+    ctx.lineTo(s * 0.02, s * 0.1);
+    ctx.lineTo(-s * 0.38, s * 0.1);
+    ctx.closePath();
+    ctx.fill();
+    return;
+  }
+  if (type === "foundry") {
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.38, -s * 0.28);
+    ctx.lineTo(s * 0.28, -s * 0.28);
+    ctx.lineTo(s * 0.44, 0);
+    ctx.lineTo(s * 0.2, s * 0.36);
+    ctx.lineTo(-s * 0.38, s * 0.28);
+    ctx.closePath();
+    ctx.fill();
+    return;
+  }
+  if (type === "city") {
+    ctx.fillRect(-s * 0.42, -s * 0.02, s * 0.2, s * 0.42);
+    ctx.fillRect(-s * 0.1, -s * 0.34, s * 0.2, s * 0.74);
+    ctx.fillRect(s * 0.22, -s * 0.18, s * 0.2, s * 0.58);
+    return;
+  }
+  ctx.beginPath();
+  ctx.arc(0, 0, s * 0.32, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawOwnerBadge(system, p, radius) {
+  const empire = state.empires[system.owner];
+  if (!empire) return;
+  const badgeRadius = clamp(7 * state.camera.zoom + 3, 6, 11);
+  const x = p.x + radius + 11;
+  const y = p.y + radius + 9;
+  const label = empire.id === "player" ? "C" : empire.adjective.slice(0, 1).toUpperCase();
+  ctx.save();
+  ctx.fillStyle = hexToRgba(empire.color, 0.94);
+  ctx.strokeStyle = "rgba(0,0,0,0.72)";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(x, y, badgeRadius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#061014";
+  ctx.font = `${Math.max(8, badgeRadius + 1)}px Inter, Segoe UI, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, x, y + 0.2);
+  ctx.restore();
 }
 
 function drawFleets(time) {
@@ -2949,6 +3999,8 @@ function drawFleets(time) {
 
     if (moving) drawShipTrail(screenX, screenY, routeAngle, color, shimmer);
     if (fleet.role === "science" && (moving || fleet.order === "survey")) drawScienceSweep(screenX, screenY, time, color);
+    if (fleet.role === "constructor") drawConstructorSparks(screenX, screenY, time, color, moving);
+    if (fleet.role === "navy") drawNavyWake(screenX, screenY, routeAngle, time, color, moving);
 
     ctx.save();
     ctx.translate(screenX, screenY);
@@ -3016,6 +4068,34 @@ function drawScienceSweep(x, y, time, color) {
   ctx.restore();
 }
 
+function drawConstructorSparks(x, y, time, color, moving) {
+  ctx.save();
+  ctx.fillStyle = hexToRgba(color, moving ? 0.5 : 0.32);
+  for (let i = 0; i < 3; i++) {
+    const angle = time / 420 + i * 2.1;
+    const radius = 11 + Math.sin(time / 260 + i) * 2;
+    ctx.beginPath();
+    ctx.arc(x + Math.cos(angle) * radius, y + Math.sin(angle) * radius, 1.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawNavyWake(x, y, angle, time, color, moving) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.strokeStyle = hexToRgba(color, moving ? 0.34 : 0.18);
+  ctx.lineWidth = 1.1;
+  const spread = 12 + Math.sin(time / 310) * 2;
+  ctx.beginPath();
+  ctx.moveTo(-spread, 10);
+  ctx.lineTo(0, moving ? 18 : 13);
+  ctx.lineTo(spread, 10);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function fleetColor(fleet) {
   if (fleet.owner === "player") {
     if (fleet.role === "science") return "#4fd1d8";
@@ -3026,7 +4106,7 @@ function fleetColor(fleet) {
   return state.empires[fleet.owner]?.color || "#ffffff";
 }
 
-function drawFleetRoutes() {
+function drawFleetRoutes(time) {
   const fleet = selectedFleet();
   if (!fleet || !fleet.route.length || !fleetVisible(fleet)) return;
   const points = [fleetPosition(fleet), ...fleet.route.map((id) => state.systems[id])].map((point) => worldToScreen(point.x, point.y));
@@ -3041,7 +4121,28 @@ function drawFleetRoutes() {
   });
   ctx.stroke();
   ctx.setLineDash([]);
+  drawRouteBeads(points, time, fleetColor(fleet));
   ctx.restore();
+}
+
+function drawRouteBeads(points, time, color) {
+  if (points.length < 2) return;
+  const phase = (time / 900) % 1;
+  ctx.fillStyle = hexToRgba(color, 0.72);
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i];
+    const b = points[i + 1];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const distance = Math.hypot(dx, dy);
+    const count = Math.max(1, Math.floor(distance / 95));
+    for (let j = 0; j < count; j++) {
+      const t = (j / count + phase) % 1;
+      ctx.beginPath();
+      ctx.arc(a.x + dx * t, a.y + dy * t, 1.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
 }
 
 function fleetVisible(fleet) {
@@ -3297,7 +4398,7 @@ function frame(time) {
   const dt = time - lastFrame;
   lastFrame = time;
   if (state.running && !state.modal && !state.menuOpen) {
-    const interval = 900 / state.speeds[state.speedIndex];
+    const interval = 1800 / state.speeds[state.speedIndex];
     state.autoTimer += dt;
     while (state.autoTimer >= interval) {
       tickMonth();

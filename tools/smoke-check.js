@@ -27,6 +27,7 @@ async function runViewport(browser, viewport) {
   await page.selectOption("#menuShape", viewport.width < 500 ? "cluster" : "barred");
   await page.selectOption("#menuSize", "standard");
   await page.fill("#menuSeed", viewport.width < 500 ? "22000625" : "22000624");
+  await page.fill("#menuAiCount", viewport.width < 500 ? "5" : "6");
   await page.click("#startMenuBtn");
   await page.waitForFunction(() => document.getElementById("mainMenu").hidden, { timeout: 5000 });
   await page.waitForTimeout(350);
@@ -50,6 +51,13 @@ async function runViewport(browser, viewport) {
       tickMonth();
       if (state.modal) resolveDecision(0);
     }
+    openSpaceEvent();
+    resolveDecision(0);
+
+    const home = state.systems[state.empires.player.homeSystemId];
+    selectSystem(home.id, false);
+    state.selectedFleetId = "con-dauntless";
+    updateUI();
 
     const data = context.getImageData(0, 0, canvas.width, canvas.height).data;
     let lit = 0;
@@ -64,14 +72,40 @@ async function runViewport(browser, viewport) {
       actions: document.querySelectorAll("[data-action]").length,
       systems: state.systems.length,
       fleets: state.fleets.length,
+      aiCount: state.aiTemplates.length,
       shape: state.galaxy.shape,
+      speeds: state.speeds,
+      activeModifiers: state.timedModifiers.length,
+      eventsHaveModifiers: SPACE_EVENTS.every((event) =>
+        event.options.every((option) => option.modifier?.duration > 0 && Object.keys(option.modifier.effects || {}).length > 0)
+      ),
       logs: state.logs.length,
       lit,
       selected: document.getElementById("selectedTag").textContent,
       systemBodies: document.querySelectorAll(".system-body").length,
       systemShips: document.querySelectorAll(".system-ship").length,
       shipOrderButtons: document.querySelectorAll(".fleet-order-card [data-action]").length,
+      installationIcons: document.querySelectorAll(".install-icon").length,
+      progressRows: document.querySelectorAll(".system-progress-row").length,
+      progressMeters: document.querySelectorAll(".system-progress-meter > span").length,
+      systemOrderHeading: [...document.querySelectorAll("#inspectorPanel .subhead")].some(
+        (item) => item.textContent.trim() === "Orders"
+      ),
       surveyOrderButton,
+      territoryLegendRows: document.querySelectorAll("#territoryLegend .territory-legend-row").length,
+      infrastructureSystems: state.systems.filter(
+        (system) =>
+          (system.known || system.surveyedBy.player || system.owner === "player") &&
+          systemInfrastructureIcons(system, { includeBuildings: true, includeColonySite: true }).length
+      ).length,
+      borderCandidates: state.systems.filter(
+        (system) =>
+          system.owner &&
+          system.hyperlanes.some((neighborId) => {
+            const neighbor = state.systems[neighborId];
+            return neighbor.owner !== system.owner && (neighbor.owner || neighbor.known || neighbor.surveyedBy.player);
+          })
+      ).length,
       canvasWidth: canvas.width,
       canvasHeight: canvas.height,
       menuVisible,
@@ -89,10 +123,21 @@ async function runViewport(browser, viewport) {
   if (!result.menuVisible) throw new Error("Main menu did not render before game start.");
   if (result.resources < 6) throw new Error("Resource bar did not render.");
   if (result.systems < 80 || result.fleets < 5) throw new Error("Galaxy generation is incomplete.");
+  if (result.aiCount !== (viewport.width < 500 ? 5 : 6)) throw new Error("AI empire counter was not applied.");
+  if (!result.eventsHaveModifiers || result.activeModifiers < 1) throw new Error("Space events did not apply modifiers.");
+  if (result.speeds[0] !== 0.5 || result.speeds[2] !== 2) throw new Error("Slower speed presets were not applied.");
+  if (result.territoryLegendRows < 1) throw new Error("Territory legend did not render.");
+  if (result.borderCandidates < 1) throw new Error("Faction border candidates were not found.");
   if (!["barred", "cluster"].includes(result.shape)) throw new Error("Menu galaxy shape was not applied.");
   if (result.systemBodies < 2) throw new Error("Solar system map did not render bodies.");
   if (result.systemShips < 1) throw new Error("Interactive ship tokens did not render in the system map.");
   if (result.shipOrderButtons < 3) throw new Error("Ship order controls did not render.");
+  if (result.installationIcons < 6) throw new Error("Infrastructure icons did not render in the system map.");
+  if (result.progressRows < 10 || result.progressMeters !== result.progressRows) {
+    throw new Error("System progress bars did not render for the selected system.");
+  }
+  if (result.infrastructureSystems < 1) throw new Error("Galaxy infrastructure icon data was not generated.");
+  if (result.systemOrderHeading) throw new Error("System inspector still renders a generic Orders section.");
   if (!result.surveyOrderButton) throw new Error("Science ship survey order did not render.");
   if (result.lit < 120) throw new Error("Canvas appears blank.");
   return result;

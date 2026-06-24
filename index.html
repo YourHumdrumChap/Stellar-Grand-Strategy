@@ -59,6 +59,7 @@
             <button class="map-mode" data-action="zoom-out" title="Zoom out">-</button>
             <button class="map-mode" data-action="zoom-in" title="Zoom in">+</button>
           </div>
+          <div id="territoryLegend" class="territory-legend"></div>
           <div id="toast" class="toast" hidden></div>
         </section>
 
@@ -123,6 +124,10 @@
           <label class="menu-field">
             <span>Seed</span>
             <input id="menuSeed" inputmode="numeric" maxlength="10" value="22000624" />
+          </label>
+          <label class="menu-field">
+            <span>AI Empires</span>
+            <input id="menuAiCount" type="number" min="1" max="8" step="1" value="4" />
           </label>
         </div>
         <div class="menu-actions">
