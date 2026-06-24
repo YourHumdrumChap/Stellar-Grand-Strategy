@@ -1,0 +1,1 @@
+Add a way to distinguish the capital system. Make it easier to visually distinguish between surveyed and unsurveyed systems, like making the unsurveyed dimmer. Make it so that the further away a system is, the more influence it takes to build an outpost and colonize it.

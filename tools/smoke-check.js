@@ -25,9 +25,17 @@ async function runViewport(browser, viewport) {
   await page.waitForSelector("#galaxyCanvas", { timeout: 10000 });
   const menuVisible = await page.locator("#mainMenu").isVisible();
   await page.selectOption("#menuShape", viewport.width < 500 ? "elliptical" : "rift");
-  await page.selectOption("#menuSize", "standard");
+  await page.evaluate(() => {
+    const size = document.getElementById("menuSize");
+    size.value = "108";
+    size.dispatchEvent(new Event("input", { bubbles: true }));
+  });
   await page.fill("#menuSeed", viewport.width < 500 ? "22000625" : "22000624");
-  await page.fill("#menuAiCount", viewport.width < 500 ? "5" : "6");
+  await page.evaluate((aiCount) => {
+    const input = document.getElementById("menuAiCount");
+    input.value = aiCount;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  }, viewport.width < 500 ? "5" : "6");
   await page.selectOption("#menuDifficulty", viewport.width < 500 ? "cadet" : "veteran");
   await page.click("#startMenuBtn");
   await page.waitForFunction(() => document.getElementById("mainMenu").hidden, { timeout: 5000 });
@@ -108,6 +116,24 @@ async function runViewport(browser, viewport) {
     commandBuildStation(home.id, "mining");
     const sameSystemBuild = !sameSystemMiningBefore && home.stations.mining;
 
+    const politicalIdeologyButtons = document.querySelectorAll('[data-action="set-ideology"][data-category="political"]').length;
+    const economicIdeologyButtons = document.querySelectorAll('[data-action="set-ideology"][data-category="economic"]').length;
+    const influenceOutputBefore = state.modifiers.influenceOutput;
+    commandSetIdeology("economic", "frontier");
+    const ideologyApplied = state.ideologies.economic === "frontier" && state.modifiers.influenceOutput > influenceOutputBefore;
+    const queueCandidate = TECH_LIBRARY.find(
+      (tech) => !state.tech.known.includes(tech.id) && state.tech.active?.id !== tech.id && !state.tech.queue.includes(tech.id)
+    );
+    if (queueCandidate) commandQueueResearch(queueCandidate.id);
+    const researchQueued = queueCandidate ? state.tech.queue.includes(queueCandidate.id) : state.tech.queue.length === 0;
+    const researchQueueButtons = document.querySelectorAll('#researchPanel [data-action="choose-tech"][title]').length;
+    const allResearchHaveModifiers = TECH_LIBRARY.every((tech) => Object.keys(tech.effects || {}).length > 0);
+    const previousBureaus = home.colony.buildings.bureau || 0;
+    const influenceBeforeBureau = computeIncome("player").influence;
+    home.colony.buildings.bureau = previousBureaus + 1;
+    const bureauInfluenceWorks = computeIncome("player").influence > influenceBeforeBureau;
+    home.colony.buildings.bureau = previousBureaus;
+
     const data = context.getImageData(0, 0, canvas.width, canvas.height).data;
     let lit = 0;
     for (let i = 0; i < data.length; i += 97 * 4) {
@@ -122,11 +148,22 @@ async function runViewport(browser, viewport) {
       systems: state.systems.length,
       fleets: state.fleets.length,
       aiCount: state.aiTemplates.length,
+      requestedSystems: state.galaxy.count,
+      systemNamePool: SYSTEM_NAMES.length,
+      uniqueSystemNames: new Set(SYSTEM_NAMES).size,
       shape: state.galaxy.shape,
       difficulty: state.galaxy.difficulty,
       researchables: TECH_LIBRARY.length,
+      allResearchHaveModifiers,
+      researchQueued,
+      researchQueueButtons,
       shipBuilds: Object.keys(SHIP_BUILDS).length,
       planetBuilds: Object.keys(PLANET_BUILDS).length,
+      civicBuildAvailable: Boolean(PLANET_BUILDS.bureau),
+      bureauInfluenceWorks,
+      politicalIdeologyButtons,
+      economicIdeologyButtons,
+      ideologyApplied,
       speeds: state.speeds,
       activeModifiers: state.timedModifiers.length,
       eventsHaveModifiers: SPACE_EVENTS.every((event) =>
@@ -187,11 +224,22 @@ async function runViewport(browser, viewport) {
   if (!result.menuVisible) throw new Error("Main menu did not render before game start.");
   if (result.resources < 6) throw new Error("Resource bar did not render.");
   if (result.systems < 80 || result.fleets < 5) throw new Error("Galaxy generation is incomplete.");
+  if (result.requestedSystems !== 108) throw new Error("Galaxy size slider was not applied.");
+  if (result.systemNamePool < 1500 || result.uniqueSystemNames !== result.systemNamePool) {
+    throw new Error("Procedural system name pool does not contain 1500 unique names.");
+  }
   if (result.aiCount !== (viewport.width < 500 ? 5 : 6)) throw new Error("AI empire counter was not applied.");
   if (result.difficulty !== (viewport.width < 500 ? "cadet" : "veteran")) throw new Error("AI difficulty was not applied.");
   if (result.researchables < 20) throw new Error("Expanded research deck did not load.");
+  if (!result.allResearchHaveModifiers) throw new Error("Every research must declare at least one modifier.");
+  if (!result.researchQueued || result.researchQueueButtons < 3) throw new Error("Research queue controls did not work.");
   if (result.shipBuilds < 5) throw new Error("Expanded ship builds did not load.");
-  if (result.planetBuilds < 8) throw new Error("Expanded planet buildings did not load.");
+  if (result.planetBuilds < 9 || !result.civicBuildAvailable || !result.bureauInfluenceWorks) {
+    throw new Error("Influence building path did not load or affect income.");
+  }
+  if (result.politicalIdeologyButtons < 4 || result.economicIdeologyButtons < 4 || !result.ideologyApplied) {
+    throw new Error("Ideology menus did not render or apply modifiers.");
+  }
   if (!result.eventsHaveModifiers || result.activeModifiers < 1) throw new Error("Space events did not apply modifiers.");
   if (result.speeds[0] !== 0.5 || result.speeds[2] !== 2) throw new Error("Slower speed presets were not applied.");
   if (result.territoryLegendRows < 1) throw new Error("Territory legend did not render.");

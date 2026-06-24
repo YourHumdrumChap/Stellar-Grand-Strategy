@@ -118,21 +118,17 @@
               <option value="rift">Great Rift</option>
             </select>
           </label>
-          <label class="menu-field">
-            <span>Galaxy Size</span>
-            <select id="menuSize">
-              <option value="standard">Standard</option>
-              <option value="compact">Compact</option>
-              <option value="grand">Grand</option>
-            </select>
+          <label class="menu-field menu-range-field">
+            <span>Galaxy Size <strong id="menuSizeValue">108</strong></span>
+            <input id="menuSize" type="range" min="10" max="750" step="1" value="108" />
           </label>
           <label class="menu-field">
             <span>Seed</span>
             <input id="menuSeed" inputmode="numeric" maxlength="10" value="22000624" />
           </label>
-          <label class="menu-field">
-            <span>AI Empires</span>
-            <input id="menuAiCount" type="number" min="1" max="8" step="1" value="4" />
+          <label class="menu-field menu-range-field">
+            <span>AI Empires <strong id="menuAiCountValue">4</strong></span>
+            <input id="menuAiCount" type="range" min="2" max="50" step="1" value="4" />
           </label>
           <label class="menu-field">
             <span>AI Difficulty</span>
@@ -145,9 +141,9 @@
           </label>
         </div>
         <div class="menu-actions">
-          <button id="startMenuBtn" class="menu-button primary" data-action="start-menu-game">Begin Galaxy</button>
-          <button class="menu-button" data-action="randomize-seed">Random Seed</button>
-          <button id="resumeMenuBtn" class="menu-button" data-action="resume-game">Resume</button>
+          <button id="startMenuBtn" class="menu-button primary" data-action="start-menu-game" title="Generate a new galaxy with these settings">Begin Galaxy</button>
+          <button class="menu-button" data-action="randomize-seed" title="Roll a new procedural seed">Random Seed</button>
+          <button id="resumeMenuBtn" class="menu-button" data-action="resume-game" title="Return to the current campaign">Resume</button>
         </div>
       </section>
     </div>

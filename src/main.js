@@ -28,8 +28,10 @@ const els = {
   mainMenu: document.getElementById("mainMenu"),
   menuShape: document.getElementById("menuShape"),
   menuSize: document.getElementById("menuSize"),
+  menuSizeValue: document.getElementById("menuSizeValue"),
   menuSeed: document.getElementById("menuSeed"),
   menuAiCount: document.getElementById("menuAiCount"),
+  menuAiCountValue: document.getElementById("menuAiCountValue"),
   menuDifficulty: document.getElementById("menuDifficulty"),
   startMenuBtn: document.getElementById("startMenuBtn"),
   resumeMenuBtn: document.getElementById("resumeMenuBtn"),
@@ -71,7 +73,7 @@ const STAR_CLASSES = [
   { code: "Dwarf", color: "#dcb8ff", radius: 3.4 },
 ];
 
-const SYSTEM_NAMES = [
+const BASE_SYSTEM_NAMES = [
   "Apolune",
   "Asteron",
   "Aurelia",
@@ -173,6 +175,8 @@ const SYSTEM_NAMES = [
   "Zephyr",
 ];
 
+const SYSTEM_NAMES = buildSystemNamePool(BASE_SYSTEM_NAMES, 1500);
+
 const EMPIRE_TEMPLATES = [
   {
     id: "helion",
@@ -256,6 +260,81 @@ const EMPIRE_TEMPLATES = [
   },
 ];
 
+function createEmpireTemplates(count) {
+  const templates = EMPIRE_TEMPLATES.slice(0, count);
+  const adjectives = [
+    "Aster",
+    "Boreal",
+    "Cyran",
+    "Deltic",
+    "Ebon",
+    "Feral",
+    "Gilded",
+    "Hyacinth",
+    "Ivory",
+    "Jade",
+    "Khepri",
+    "Lacunal",
+    "Myriad",
+    "Novan",
+    "Orchid",
+    "Praxic",
+    "Quorum",
+    "Radian",
+    "Saffron",
+    "Tessel",
+    "Umbral",
+    "Veyran",
+    "Warden",
+    "Xyric",
+    "Ysolde",
+    "Zenian",
+  ];
+  const governments = ["Accord", "Assembly", "Compact", "Concord", "Consortium", "Directorate", "Dominion", "League", "Mandate", "Union"];
+  while (templates.length < count) {
+    const index = templates.length - EMPIRE_TEMPLATES.length;
+    const adjective = adjectives[index % adjectives.length];
+    const government = governments[Math.floor(index / adjectives.length) % governments.length];
+    templates.push({
+      id: `ai-${index + 1}`,
+      name: `${adjective} ${government}`,
+      adjective,
+      color: colorFromIndex(index),
+      attitude: Math.round(((index * 13) % 45) - 22),
+      expansion: 5 + (index % 5),
+      aggression: clamp(0.28 + ((index * 17) % 54) / 100, 0.18, 0.86),
+      home: `${SYSTEM_NAMES[(index * 37 + 91) % SYSTEM_NAMES.length]} Seat`,
+    });
+  }
+  return templates;
+}
+
+function colorFromIndex(index) {
+  const hue = ((index * 47 + 28) % 360) / 60;
+  const chroma = 0.52;
+  const x = chroma * (1 - Math.abs((hue % 2) - 1));
+  const [r1, g1, b1] =
+    hue < 1
+      ? [chroma, x, 0]
+      : hue < 2
+        ? [x, chroma, 0]
+        : hue < 3
+          ? [0, chroma, x]
+          : hue < 4
+            ? [0, x, chroma]
+            : hue < 5
+              ? [x, 0, chroma]
+              : [chroma, 0, x];
+  const m = 0.42;
+  return `#${[r1 + m, g1 + m, b1 + m]
+    .map((value) =>
+      Math.round(Math.max(0, Math.min(1, value)) * 255)
+        .toString(16)
+        .padStart(2, "0")
+    )
+    .join("")}`;
+}
+
 const TECH_LIBRARY = [
   {
     id: "survey-drones",
@@ -263,10 +342,7 @@ const TECH_LIBRARY = [
     field: "Physics",
     cost: 95,
     text: "Science ships survey faster and uncover safer anomaly options.",
-    apply() {
-      state.modifiers.surveySpeed += 0.35;
-      state.modifiers.anomalySafety += 0.15;
-    },
+    effects: { surveySpeed: 0.35, anomalySafety: 0.15 },
   },
   {
     id: "fusion-grid",
@@ -274,10 +350,7 @@ const TECH_LIBRARY = [
     field: "Engineering",
     cost: 120,
     text: "Energy stations produce more and ship upkeep falls slightly.",
-    apply() {
-      state.modifiers.stationEnergy += 0.35;
-      state.modifiers.shipUpkeep -= 0.08;
-    },
+    effects: { stationEnergy: 0.35, shipUpkeep: -0.08 },
   },
   {
     id: "deep-core",
@@ -285,10 +358,7 @@ const TECH_LIBRARY = [
     field: "Industry",
     cost: 130,
     text: "Mining stations and mining districts become more productive.",
-    apply() {
-      state.modifiers.stationMinerals += 0.3;
-      state.modifiers.miningDistricts += 0.2;
-    },
+    effects: { stationMinerals: 0.3, miningDistricts: 0.2 },
   },
   {
     id: "orbital-labs",
@@ -296,10 +366,7 @@ const TECH_LIBRARY = [
     field: "Society",
     cost: 150,
     text: "Research stations and labs produce more research.",
-    apply() {
-      state.modifiers.stationResearch += 0.3;
-      state.modifiers.labs += 0.25;
-    },
+    effects: { stationResearch: 0.3, labs: 0.25 },
   },
   {
     id: "colonial-charter",
@@ -307,10 +374,7 @@ const TECH_LIBRARY = [
     field: "Society",
     cost: 170,
     text: "Colonies are cheaper and grow faster.",
-    apply() {
-      state.modifiers.colonyCost -= 0.22;
-      state.modifiers.growth += 0.25;
-    },
+    effects: { colonyCost: -0.22, growth: 0.25 },
   },
   {
     id: "hyperlane-cadence",
@@ -318,9 +382,7 @@ const TECH_LIBRARY = [
     field: "Physics",
     cost: 160,
     text: "All fleets cross hyperlanes faster.",
-    apply() {
-      state.modifiers.shipSpeed += 0.3;
-    },
+    effects: { shipSpeed: 0.3 },
   },
   {
     id: "starhold",
@@ -328,10 +390,7 @@ const TECH_LIBRARY = [
     field: "Engineering",
     cost: 180,
     text: "Outposts gain defenses and cost less alloy to build.",
-    apply() {
-      state.modifiers.starbaseDefense += 4;
-      state.modifiers.outpostCost -= 0.18;
-    },
+    effects: { starbaseDefense: 4, outpostCost: -0.18 },
   },
   {
     id: "fleet-patterns",
@@ -339,10 +398,8 @@ const TECH_LIBRARY = [
     field: "Military",
     cost: 190,
     text: "Warships gain combat power and destroyers become available.",
-    apply() {
-      state.modifiers.fleetPower += 0.22;
-      state.unlocks.destroyer = true;
-    },
+    effects: { fleetPower: 0.22 },
+    unlocks: ["destroyer"],
   },
   {
     id: "civic-archives",
@@ -350,10 +407,7 @@ const TECH_LIBRARY = [
     field: "Governance",
     cost: 145,
     text: "Unity production improves and diplomatic actions cost less.",
-    apply() {
-      state.modifiers.unity += 0.35;
-      state.modifiers.diplomacyCost -= 0.2;
-    },
+    effects: { unity: 0.35, diplomacyCost: -0.2 },
   },
   {
     id: "interstellar-bureaus",
@@ -361,10 +415,7 @@ const TECH_LIBRARY = [
     field: "Governance",
     cost: 155,
     text: "Influence income rises and empire sprawl hurts less.",
-    apply() {
-      state.modifiers.influence += 1;
-      state.modifiers.sprawl += 0.18;
-    },
+    effects: { influence: 1, influenceOutput: 0.12, sprawl: 0.18 },
   },
   {
     id: "shield-harmonics",
@@ -372,9 +423,7 @@ const TECH_LIBRARY = [
     field: "Military",
     cost: 210,
     text: "Fleets and starbases take fewer combat losses.",
-    apply() {
-      state.modifiers.combatSurvival += 0.18;
-    },
+    effects: { combatSurvival: 0.18 },
   },
   {
     id: "terraforming-seeds",
@@ -382,9 +431,7 @@ const TECH_LIBRARY = [
     field: "Society",
     cost: 220,
     text: "Marginal worlds become more attractive colony targets.",
-    apply() {
-      state.modifiers.habitability += 0.18;
-    },
+    effects: { habitability: 0.18 },
   },
   {
     id: "modular-shipyards",
@@ -392,10 +439,8 @@ const TECH_LIBRARY = [
     field: "Engineering",
     cost: 235,
     text: "Ship construction accelerates and frigate hulls become available.",
-    apply() {
-      state.modifiers.shipBuildSpeed += 0.15;
-      state.unlocks.frigate = true;
-    },
+    effects: { shipBuildSpeed: 0.15 },
+    unlocks: ["frigate"],
   },
   {
     id: "cruiser-keels",
@@ -403,10 +448,8 @@ const TECH_LIBRARY = [
     field: "Military",
     cost: 320,
     text: "Cruisers become available and fleet morale improves.",
-    apply() {
-      state.unlocks.cruiser = true;
-      state.modifiers.fleetMorale += 0.1;
-    },
+    effects: { fleetMorale: 0.1 },
+    unlocks: ["cruiser"],
   },
   {
     id: "carrier-doctrine",
@@ -414,10 +457,8 @@ const TECH_LIBRARY = [
     field: "Military",
     cost: 420,
     text: "Carrier task groups become available and fleets project more power.",
-    apply() {
-      state.unlocks.carrier = true;
-      state.modifiers.fleetPower += 0.12;
-    },
+    effects: { fleetPower: 0.12 },
+    unlocks: ["carrier"],
   },
   {
     id: "orbital-greenhouses",
@@ -425,10 +466,8 @@ const TECH_LIBRARY = [
     field: "Society",
     cost: 205,
     text: "Hydroponic domes become available and colonies grow faster.",
-    apply() {
-      state.unlocks.hydroponics = true;
-      state.modifiers.growth += 0.12;
-    },
+    effects: { growth: 0.12 },
+    unlocks: ["hydroponics"],
   },
   {
     id: "exchange-ports",
@@ -436,10 +475,8 @@ const TECH_LIBRARY = [
     field: "Governance",
     cost: 230,
     text: "Trade hubs become available and trade income rises.",
-    apply() {
-      state.unlocks.tradeHub = true;
-      state.modifiers.trade += 0.16;
-    },
+    effects: { trade: 0.16 },
+    unlocks: ["tradeHub"],
   },
   {
     id: "planetary-bastions",
@@ -447,10 +484,8 @@ const TECH_LIBRARY = [
     field: "Military",
     cost: 260,
     text: "Fortress districts become available and starbase defenses improve.",
-    apply() {
-      state.unlocks.fortress = true;
-      state.modifiers.starbaseDefense += 2;
-    },
+    effects: { starbaseDefense: 2 },
+    unlocks: ["fortress"],
   },
   {
     id: "zero-g-fabricators",
@@ -458,10 +493,7 @@ const TECH_LIBRARY = [
     field: "Industry",
     cost: 275,
     text: "Foundries and shipyards become more efficient.",
-    apply() {
-      state.modifiers.foundries += 0.18;
-      state.modifiers.shipBuildSpeed += 0.1;
-    },
+    effects: { foundries: 0.18, shipBuildSpeed: 0.1 },
   },
   {
     id: "administrative-ai",
@@ -469,12 +501,96 @@ const TECH_LIBRARY = [
     field: "Governance",
     cost: 300,
     text: "Sprawl penalties ease and research administration improves.",
-    apply() {
-      state.modifiers.sprawl += 0.22;
-      state.modifiers.researchAdmin += 0.12;
-    },
+    effects: { sprawl: 0.22, researchAdmin: 0.12 },
   },
 ];
+
+const MODIFIER_LABELS = {
+  stationEnergy: "energy station output",
+  stationMinerals: "mining station output",
+  stationResearch: "research station output",
+  miningDistricts: "mining district output",
+  labs: "lab output",
+  colonyCost: "colony cost",
+  growth: "growth speed",
+  shipSpeed: "fleet speed",
+  starbaseDefense: "starbase defense",
+  outpostCost: "outpost cost",
+  fleetPower: "fleet power",
+  combatSurvival: "combat survival",
+  unity: "unity output",
+  influence: "influence income",
+  influenceOutput: "influence output",
+  sprawl: "sprawl efficiency",
+  diplomacyCost: "diplomacy cost",
+  habitability: "habitability",
+  anomalySafety: "anomaly safety",
+  shipUpkeep: "ship upkeep",
+  surveySpeed: "survey speed",
+  trade: "trade income",
+  shipBuildSpeed: "ship build speed",
+  stationBuildCost: "station build cost",
+  fleetMorale: "fleet morale",
+  repairRate: "repair rate",
+  pirateSuppression: "pirate suppression",
+  foundries: "foundry output",
+  researchAdmin: "research administration",
+};
+
+const IDEOLOGIES = {
+  political: [
+    {
+      id: "federal",
+      label: "Federal Senate",
+      text: "Balanced representation favors diplomacy, unity, and stable influence.",
+      effects: { influence: 0.35, unity: 0.1, diplomacyCost: -0.08 },
+    },
+    {
+      id: "centralist",
+      label: "Central Command",
+      text: "Centralized authority improves expansion logistics and defensive readiness.",
+      effects: { influence: 0.55, outpostCost: -0.08, starbaseDefense: 2 },
+    },
+    {
+      id: "civic",
+      label: "Civic Compact",
+      text: "Local assemblies improve cohesion and reduce administrative drag.",
+      effects: { unity: 0.18, sprawl: 0.14, growth: 0.08 },
+    },
+    {
+      id: "martial",
+      label: "Martial Directorate",
+      text: "Military rule sharpens fleets, but diplomacy becomes more expensive.",
+      effects: { fleetPower: 0.1, fleetMorale: 0.08, diplomacyCost: 0.08 },
+    },
+  ],
+  economic: [
+    {
+      id: "mixed",
+      label: "Mixed Economy",
+      text: "A flexible economy modestly improves trade, minerals, and influence output.",
+      effects: { trade: 0.08, miningDistricts: 0.06, influenceOutput: 0.06 },
+    },
+    {
+      id: "industrial",
+      label: "Industrial Mobilization",
+      text: "Heavy industry favors alloys and faster ship construction at higher upkeep.",
+      effects: { foundries: 0.14, shipBuildSpeed: 0.08, shipUpkeep: 0.04 },
+    },
+    {
+      id: "knowledge",
+      label: "Knowledge Commons",
+      text: "Research networks improve labs, administration, and survey capacity.",
+      effects: { labs: 0.14, researchAdmin: 0.08, surveySpeed: 0.1 },
+    },
+    {
+      id: "frontier",
+      label: "Frontier Grants",
+      text: "Colonial subsidies lower expansion costs and improve influence from bureaus.",
+      effects: { colonyCost: -0.1, outpostCost: -0.06, influenceOutput: 0.14 },
+    },
+  ],
+};
 
 const PLANET_BUILDS = {
   generator: {
@@ -506,6 +622,12 @@ const PLANET_BUILDS = {
     cost: { minerals: 145, unity: 30 },
     months: 7,
     text: "Growth and unity",
+  },
+  bureau: {
+    label: "Civic Bureau",
+    cost: { minerals: 165, unity: 55 },
+    months: 8,
+    text: "Influence and unity",
   },
   hydroponics: {
     label: "Hydroponics",
@@ -542,6 +664,7 @@ const INFRASTRUCTURE_META = {
   lab: { label: "Lab district", color: "#4fd1d8" },
   foundry: { label: "Foundry district", color: "#ec6a64" },
   city: { label: "City district", color: "#ad8cff" },
+  bureau: { label: "Civic bureau", color: "#d7c36a" },
   hydroponics: { label: "Hydroponics district", color: "#67d38f" },
   tradeHub: { label: "Trade hub", color: "#f2b84b" },
   fortress: { label: "Fortress district", color: "#c5d5dc" },
@@ -590,11 +713,7 @@ const SHIP_BUILDS = {
   },
 };
 
-const GALAXY_SIZES = {
-  compact: { label: "Compact", count: 76, scale: 1260, linkRange: 420, background: 420 },
-  standard: { label: "Standard", count: 108, scale: 1580, linkRange: 470, background: 560 },
-  grand: { label: "Grand", count: 146, scale: 1920, linkRange: 525, background: 720 },
-};
+const GALAXY_SIZE_LIMITS = { min: 10, max: 750, default: 108 };
 
 const GALAXY_SHAPES = {
   spiral: { label: "Spiral Arms", arms: 4 },
@@ -613,7 +732,7 @@ const AI_DIFFICULTIES = {
   admiral: { label: "Admiral", economy: 1.38, stockpile: 1.32, fleet: 1.24, expansion: 1.28, aggression: 0.16 },
 };
 
-const DEFAULT_GALAXY = { shape: "spiral", size: "standard", aiCount: 4, difficulty: "standard" };
+const DEFAULT_GALAXY = { shape: "spiral", size: GALAXY_SIZE_LIMITS.default, aiCount: 4, difficulty: "standard" };
 
 const BODY_COLORS = {
   Arid: "#c9955c",
@@ -1007,20 +1126,142 @@ function randomBell() {
   return (state.rng() + state.rng() + state.rng()) / 3;
 }
 
+function galaxySizeSettings(count) {
+  const sizeFactor = Math.sqrt(count / GALAXY_SIZE_LIMITS.default);
+  const scale = Math.round(1580 * sizeFactor);
+  return {
+    count,
+    scale,
+    linkRange: Math.round(470 * Math.max(0.72, sizeFactor * 0.92)),
+    background: Math.round(360 + count * 1.65),
+  };
+}
+
+function buildSystemNamePool(baseNames, minimumCount) {
+  const starts = [
+    "Ael",
+    "Alt",
+    "An",
+    "Ar",
+    "Bel",
+    "Bryn",
+    "Cael",
+    "Cor",
+    "Dae",
+    "Dun",
+    "Eld",
+    "Eri",
+    "Fen",
+    "Gal",
+    "Hal",
+    "Ily",
+    "Jor",
+    "Kael",
+    "Kel",
+    "Lor",
+    "Maer",
+    "Mor",
+    "Nym",
+    "Or",
+    "Pyr",
+    "Quin",
+    "Rho",
+    "Sar",
+    "Tal",
+    "Ul",
+    "Val",
+    "Wyn",
+    "Xan",
+    "Ydr",
+    "Zor",
+  ];
+  const middles = [
+    "a",
+    "ae",
+    "an",
+    "ar",
+    "bel",
+    "cor",
+    "dan",
+    "dor",
+    "el",
+    "en",
+    "far",
+    "ion",
+    "is",
+    "ka",
+    "lor",
+    "mar",
+    "nar",
+    "or",
+    "ra",
+    "ren",
+    "sel",
+    "tar",
+    "ul",
+    "ven",
+    "wyn",
+  ];
+  const endings = [
+    "a",
+    "ae",
+    "an",
+    "ara",
+    "aris",
+    "arion",
+    "eon",
+    "es",
+    "eth",
+    "ia",
+    "iel",
+    "ion",
+    "is",
+    "ix",
+    "on",
+    "ora",
+    "os",
+    "oth",
+    " Prime",
+    " Reach",
+    " Rift",
+    " Spire",
+    " Vale",
+    " Watch",
+    " Zenith",
+  ];
+  const names = new Set(baseNames);
+  for (const start of starts) {
+    for (const middle of middles) {
+      for (const ending of endings) {
+        if (names.size >= minimumCount) return [...names];
+        names.add(`${start}${middle}${ending}`);
+      }
+    }
+  }
+  let index = 1;
+  while (names.size < minimumCount) {
+    names.add(`Charted-${String(index).padStart(4, "0")}`);
+    index += 1;
+  }
+  return [...names];
+}
+
 function normalizeGalaxySettings(settings = {}) {
   const shape = GALAXY_SHAPES[settings.shape] ? settings.shape : DEFAULT_GALAXY.shape;
-  const size = GALAXY_SIZES[settings.size] ? settings.size : DEFAULT_GALAXY.size;
-  const aiCount = clamp(Number.parseInt(settings.aiCount, 10) || DEFAULT_GALAXY.aiCount, 1, EMPIRE_TEMPLATES.length);
+  const parsedSize = Number.parseInt(settings.size, 10);
+  const count = clamp(Number.isFinite(parsedSize) ? parsedSize : DEFAULT_GALAXY.size, GALAXY_SIZE_LIMITS.min, GALAXY_SIZE_LIMITS.max);
+  const parsedAi = Number.parseInt(settings.aiCount, 10);
+  const aiCount = clamp(Number.isFinite(parsedAi) ? parsedAi : DEFAULT_GALAXY.aiCount, 2, Math.min(50, Math.max(2, count - 1)));
   const difficulty = AI_DIFFICULTIES[settings.difficulty] ? settings.difficulty : DEFAULT_GALAXY.difficulty;
   return {
     shape,
-    size,
+    size: count,
     aiCount,
     difficulty,
     shapeLabel: GALAXY_SHAPES[shape].label,
-    sizeLabel: GALAXY_SIZES[size].label,
+    sizeLabel: `${count} Systems`,
     difficultyLabel: AI_DIFFICULTIES[difficulty].label,
-    ...GALAXY_SIZES[size],
+    ...galaxySizeSettings(count),
   };
 }
 
@@ -1042,7 +1283,7 @@ function createEmptyResources(values = {}) {
 function newGame(seed = Date.now(), galaxySettings = DEFAULT_GALAXY, options = {}) {
   const cleanSeed = Number.isFinite(Number(seed)) ? Number(seed) : Date.now();
   const galaxy = normalizeGalaxySettings(galaxySettings);
-  const aiTemplates = EMPIRE_TEMPLATES.slice(0, galaxy.aiCount);
+  const aiTemplates = createEmpireTemplates(galaxy.aiCount);
   state = {
     seed: cleanSeed,
     rng: makeRng(cleanSeed),
@@ -1073,6 +1314,7 @@ function newGame(seed = Date.now(), galaxySettings = DEFAULT_GALAXY, options = {
     lastIncome: createEmptyResources(),
     buildQueue: [],
     timedModifiers: [],
+    ideologies: { political: "federal", economic: "mixed" },
     eventCooldown: 22,
     pirateCooldown: 40,
     eventHistory: [],
@@ -1094,6 +1336,7 @@ function newGame(seed = Date.now(), galaxySettings = DEFAULT_GALAXY, options = {
       combatSurvival: 0,
       unity: 0,
       influence: 0,
+      influenceOutput: 0,
       sprawl: 0,
       diplomacyCost: 0,
       habitability: 0,
@@ -1118,12 +1361,14 @@ function newGame(seed = Date.now(), galaxySettings = DEFAULT_GALAXY, options = {
       tradeHub: false,
       fortress: false,
     },
-    tech: { known: [], active: null, progress: 0, choices: [] },
+    tech: { known: [], active: null, progress: 0, choices: [], queue: [] },
     empires: {},
     contacts: {},
     piratesSpawned: 0,
     iconKeyOpen: false,
   };
+
+  applyCurrentIdeologies();
 
   state.empires.player = {
     id: "player",
@@ -1512,6 +1757,16 @@ function connectSystems(a, b) {
   if (!two.hyperlanes.includes(a)) two.hyperlanes.push(a);
 }
 
+function uniqueSystemName(preferred, systemId) {
+  const used = new Set(state.systems.filter((system) => system.id !== systemId).map((system) => system.name));
+  if (!used.has(preferred)) return preferred;
+  for (let index = 2; index < 100; index += 1) {
+    const candidate = `${preferred} ${index}`;
+    if (!used.has(candidate)) return candidate;
+  }
+  return `${preferred} ${systemId}`;
+}
+
 function assignHomeworlds() {
   const playerHome = state.systems[0];
   playerHome.name = "Aurelia";
@@ -1535,28 +1790,33 @@ function assignHomeworlds() {
       .filter((system) => !system.owner)
       .sort((a, b) => Math.abs(systemDistance(a, target) - 0) - Math.abs(systemDistance(b, target) - 0))[0];
     const chosen = home || fallback;
-    chosen.name = template.home;
+    if (!chosen) return;
+    chosen.name = uniqueSystemName(template.home, chosen.id);
     chosen.planet =
       chosen.planet ||
       {
-        name: `${template.home} Prime`,
+        name: `${chosen.name} Prime`,
         habitability: 0.76,
         size: 17,
         type: pick(["Arid", "Ocean", "Alpine", "Continental"]),
       };
-    chosen.planet.name = `${template.home} Prime`;
+    chosen.planet.name = `${chosen.name} Prime`;
     chosen.bodies = createSystemBodies(chosen.name, chosen.star, chosen.planet, chosen.deposits, true);
     claimSystem(chosen.id, template.id, { home: true, reveal: false });
     chosen.colony = createColony(template.id, chosen.planet, true);
     state.empires[template.id].homeSystemId = chosen.id;
 
-    const frontier = chosen.hyperlanes
-      .map((id) => state.systems[id])
-      .filter((system) => !system.owner)
-      .sort((a, b) => scoreSystemForEmpire(b) - scoreSystemForEmpire(a))
-      .slice(0, 1);
-    for (const system of frontier) {
-      claimSystem(system.id, template.id, { reveal: false });
+    const remainingEmpires = state.aiTemplates.length - index - 1;
+    const openSystems = state.systems.filter((system) => !system.owner).length;
+    if (openSystems > remainingEmpires) {
+      const frontier = chosen.hyperlanes
+        .map((id) => state.systems[id])
+        .filter((system) => !system.owner)
+        .sort((a, b) => scoreSystemForEmpire(b) - scoreSystemForEmpire(a))
+        .slice(0, 1);
+      for (const system of frontier) {
+        claimSystem(system.id, template.id, { reveal: false });
+      }
     }
   });
 }
@@ -1642,6 +1902,8 @@ function createFleets() {
   });
 
   for (const template of state.aiTemplates) {
+    const homeSystemId = state.empires[template.id].homeSystemId;
+    if (homeSystemId === null || homeSystemId === undefined) continue;
     const difficulty = AI_DIFFICULTIES[state.galaxy.difficulty];
     const strength = Math.floor(randRange(13, 21) * difficulty.fleet);
     state.fleets.push({
@@ -1649,7 +1911,7 @@ function createFleets() {
       name: `${template.adjective} Spear`,
       owner: template.id,
       role: "navy",
-      location: state.empires[template.id].homeSystemId,
+      location: homeSystemId,
       route: [],
       progress: 0,
       segmentMonths: 1,
@@ -1714,13 +1976,91 @@ function toast(text) {
   }, 2400);
 }
 
+function applyModifierEffects(effects, direction = 1) {
+  for (const [key, value] of Object.entries(effects || {})) {
+    if (typeof state.modifiers[key] !== "number") continue;
+    state.modifiers[key] += value * direction;
+  }
+}
+
+function modifierValueText(key, value) {
+  const percentKeys = new Set([
+    "stationEnergy",
+    "stationMinerals",
+    "stationResearch",
+    "miningDistricts",
+    "labs",
+    "colonyCost",
+    "growth",
+    "shipSpeed",
+    "outpostCost",
+    "fleetPower",
+    "combatSurvival",
+    "unity",
+    "influenceOutput",
+    "sprawl",
+    "diplomacyCost",
+    "habitability",
+    "anomalySafety",
+    "surveySpeed",
+    "shipBuildSpeed",
+    "stationBuildCost",
+    "fleetMorale",
+    "repairRate",
+    "pirateSuppression",
+    "foundries",
+    "researchAdmin",
+  ]);
+  const label = MODIFIER_LABELS[key] || key;
+  if (key === "shipUpkeep") return `${value >= 0 ? "+" : ""}${value.toFixed(2)} energy ${label}`;
+  if (percentKeys.has(key)) return `${value >= 0 ? "+" : ""}${Math.round(value * 100)}% ${label}`;
+  return `${value >= 0 ? "+" : ""}${oneDecimal(value)} ${label}`;
+}
+
+function modifierEffectsText(effects) {
+  const entries = Object.entries(effects || {});
+  if (!entries.length) return "No modifiers";
+  return entries.map(([key, value]) => modifierValueText(key, value)).join(", ");
+}
+
+function findIdeology(category, id) {
+  return IDEOLOGIES[category]?.find((ideology) => ideology.id === id) || null;
+}
+
+function applyCurrentIdeologies() {
+  for (const [category, id] of Object.entries(state.ideologies || {})) {
+    const ideology = findIdeology(category, id);
+    if (ideology) applyModifierEffects(ideology.effects);
+  }
+}
+
+function commandSetIdeology(category, id) {
+  const next = findIdeology(category, id);
+  if (!next || state.ideologies[category] === id) return;
+  const previous = findIdeology(category, state.ideologies[category]);
+  if (previous) applyModifierEffects(previous.effects, -1);
+  state.ideologies[category] = id;
+  applyModifierEffects(next.effects);
+  addLog(`${next.label} adopted as ${category} doctrine.`, "major");
+  updateUI();
+}
+
+function applyTech(tech) {
+  applyModifierEffects(tech.effects);
+  for (const unlock of tech.unlocks || []) {
+    if (unlock in state.unlocks) state.unlocks[unlock] = true;
+  }
+}
+
+function researchSummary(tech) {
+  const unlocks = tech.unlocks?.length ? ` Unlocks: ${tech.unlocks.map(requirementLabel).join(", ")}.` : "";
+  return `${tech.text} Modifiers: ${modifierEffectsText(tech.effects)}.${unlocks}`;
+}
+
 function addTimedModifier(modifier) {
   if (!modifier?.effects) return;
   const activeId = `${modifier.id}-${state.month}-${state.timedModifiers.length}`;
-  for (const [key, value] of Object.entries(modifier.effects)) {
-    if (typeof state.modifiers[key] !== "number") continue;
-    state.modifiers[key] += value;
-  }
+  applyModifierEffects(modifier.effects);
   state.timedModifiers.push({
     id: activeId,
     label: modifier.label,
@@ -1740,10 +2080,7 @@ function processTimedModifiers() {
   }
   state.timedModifiers = state.timedModifiers.filter((modifier) => modifier.remaining > 0);
   for (const modifier of expired) {
-    for (const [key, value] of Object.entries(modifier.effects)) {
-      if (typeof state.modifiers[key] !== "number") continue;
-      state.modifiers[key] -= value;
-    }
+    applyModifierEffects(modifier.effects, -1);
     addLog(`${modifier.label} expires.`);
   }
 }
@@ -1781,16 +2118,17 @@ function makeContact(empireId) {
 function drawTechChoices() {
   const taken = new Set(state.tech.known);
   if (state.tech.active) taken.add(state.tech.active.id);
+  for (const queued of state.tech.queue || []) taken.add(queued);
   const pool = TECH_LIBRARY.filter((tech) => !taken.has(tech.id));
   const choices = [];
-  while (pool.length && choices.length < 3) {
+  while (pool.length && choices.length < 4) {
     const index = Math.floor(state.rng() * pool.length);
     choices.push(pool.splice(index, 1)[0]);
   }
   return choices;
 }
 
-function chooseTech(id, silent = false) {
+function startResearch(id, silent = false) {
   const tech = TECH_LIBRARY.find((item) => item.id === id);
   if (!tech || state.tech.known.includes(id)) return;
   state.tech.active = tech;
@@ -1798,6 +2136,39 @@ function chooseTech(id, silent = false) {
   state.tech.choices = state.tech.choices.filter((choice) => choice.id !== id);
   if (!silent) addLog(`Research begins: ${tech.name}.`, "science");
   updateUI();
+}
+
+function chooseTech(id, silent = false) {
+  if (!state.tech.active) return startResearch(id, silent);
+  return commandQueueResearch(id, silent);
+}
+
+function commandQueueResearch(id, silent = false) {
+  const tech = TECH_LIBRARY.find((item) => item.id === id);
+  if (!tech || state.tech.known.includes(id) || state.tech.active?.id === id || state.tech.queue.includes(id)) return;
+  state.tech.queue.push(id);
+  state.tech.choices = drawTechChoices();
+  if (!silent) addLog(`Research queued: ${tech.name}.`, "science");
+  updateUI();
+}
+
+function commandRemoveQueuedResearch(id) {
+  const before = state.tech.queue.length;
+  state.tech.queue = state.tech.queue.filter((techId) => techId !== id);
+  if (state.tech.queue.length !== before) {
+    state.tech.choices = drawTechChoices();
+    updateUI();
+  }
+}
+
+function startNextQueuedResearch() {
+  const next = state.tech.queue.shift();
+  if (next) {
+    startResearch(next, false);
+    return true;
+  }
+  state.tech.choices = drawTechChoices();
+  return false;
 }
 
 function tickMonth() {
@@ -1871,8 +2242,10 @@ function computeIncome(owner) {
         colony.buildings.foundry * 3.1 * (1 + (isPlayer ? state.modifiers.foundries : 0)) +
         Math.max(0, colony.pops - 5) * 0.16;
       income.research += colony.buildings.lab * 4.1 * (1 + (isPlayer ? state.modifiers.labs : 0));
+      income.influence += (colony.buildings.bureau || 0) * (0.45 + colony.pops * 0.018);
       income.unity +=
         colony.buildings.city * 1.9 +
+        (colony.buildings.bureau || 0) * 1.2 +
         (colony.buildings.tradeHub || 0) * 1.4 +
         (colony.buildings.fortress || 0) * 1.1 +
         colony.pops * 0.22;
@@ -1907,6 +2280,7 @@ function computeIncome(owner) {
 
   if (isPlayer) income.research *= 1 + state.modifiers.researchAdmin;
   if (isPlayer) income.unity *= 1 + state.modifiers.unity;
+  if (isPlayer) income.influence *= 1 + state.modifiers.influenceOutput;
   if (!isPlayer) {
     const difficulty = AI_DIFFICULTIES[state.galaxy.difficulty];
     for (const key of RESOURCE_ORDER) income[key] *= difficulty.economy;
@@ -1934,25 +2308,13 @@ function processResearch() {
   state.tech.progress += Math.max(0, state.lastIncome.research);
   state.resources.research = state.tech.progress;
   if (state.tech.progress >= active.cost) {
-    active.apply();
+    applyTech(active);
     state.tech.known.push(active.id);
     addLog(`Research complete: ${active.name}.`, "science");
     state.tech.active = null;
     state.tech.progress = 0;
     state.resources.research = 0;
-    state.tech.choices = drawTechChoices();
-    if (state.tech.choices.length) {
-      openDecision({
-        kicker: "Research",
-        title: "Research Completed",
-        text: `${active.name} is now active across the Commonwealth. Select a new focus.`,
-        options: state.tech.choices.map((choice) => ({
-          label: choice.name,
-          text: `${choice.field}: ${choice.text}`,
-          effect: () => chooseTech(choice.id),
-        })),
-      });
-    }
+    if (!startNextQueuedResearch()) addLog("Research focus complete. Queue a new project from the research menu.", "science");
   }
 }
 
@@ -3291,16 +3653,23 @@ function syncMenuControls() {
   els.menuSeed.value = String(state.seed || randomSeed());
   els.menuAiCount.value = String(state.galaxy?.aiCount || DEFAULT_GALAXY.aiCount);
   els.menuDifficulty.value = state.galaxy?.difficulty || DEFAULT_GALAXY.difficulty;
+  updateMenuRangeLabels();
+}
+
+function updateMenuRangeLabels() {
+  if (els.menuSizeValue) els.menuSizeValue.textContent = String(els.menuSize.value);
+  if (els.menuAiCountValue) els.menuAiCountValue.textContent = String(els.menuAiCount.value);
 }
 
 function readMenuSettings() {
   const parsedSeed = Number.parseInt(els.menuSeed.value, 10);
+  const parsedSize = Number.parseInt(els.menuSize.value, 10);
   const parsedAiCount = Number.parseInt(els.menuAiCount.value, 10);
   return {
     seed: Number.isFinite(parsedSeed) ? parsedSeed : randomSeed(),
     settings: {
       shape: els.menuShape.value,
-      size: els.menuSize.value,
+      size: Number.isFinite(parsedSize) ? parsedSize : DEFAULT_GALAXY.size,
       aiCount: Number.isFinite(parsedAiCount) ? parsedAiCount : DEFAULT_GALAXY.aiCount,
       difficulty: els.menuDifficulty.value,
     },
@@ -3432,6 +3801,7 @@ function renderEmpirePanel() {
     <div class="meter" title="Victory progress"><span style="width:${clamp(victory * 100, 4, 100)}%"></span></div>
     <div class="small-note" style="margin-top:7px">Control 34 systems, settle 8 colonies, or take every rival capital.</div>
     ${renderActiveModifiers()}
+    ${renderIdeologyMenus()}
     <div class="subhead">Shipyard</div>
     <div class="action-grid">
       ${Object.keys(SHIP_BUILDS).map(shipButton).join("")}
@@ -3503,6 +3873,39 @@ function shipButton(key) {
     <button class="action-button" data-action="build-ship" data-ship="${key}" ${disabled ? "disabled" : ""} title="${escapeHtml(title)}">
       ${escapeHtml(ship.label)}
     </button>
+  `;
+}
+
+function renderIdeologyMenus() {
+  return `
+    ${renderIdeologyMenu("political", "Political Ideology")}
+    ${renderIdeologyMenu("economic", "Economic Ideology")}
+  `;
+}
+
+function renderIdeologyMenu(category, title) {
+  return `
+    <div class="subhead">${title}</div>
+    <div class="ideology-grid">
+      ${IDEOLOGIES[category]
+        .map((ideology) => {
+          const active = state.ideologies[category] === ideology.id;
+          const summary = `${ideology.text} Modifiers: ${modifierEffectsText(ideology.effects)}.`;
+          return `
+            <button
+              class="ghost-button ideology-button ${active ? "is-active" : ""}"
+              data-action="set-ideology"
+              data-category="${category}"
+              data-ideology="${ideology.id}"
+              title="${escapeHtml(summary)}"
+            >
+              <strong>${escapeHtml(ideology.label)}</strong>
+              <span>${escapeHtml(modifierEffectsText(ideology.effects))}</span>
+            </button>
+          `;
+        })
+        .join("")}
+    </div>
   `;
 }
 
@@ -3654,24 +4057,53 @@ function renderResearchPanel() {
       <div class="system-header">
         <div class="system-title">${escapeHtml(active.name)}</div>
         <div class="system-subtitle">${escapeHtml(active.field)} - ${fmt(state.tech.progress)} / ${fmt(active.cost)}</div>
+        <div class="choice-text">${escapeHtml(researchSummary(active))}</div>
         <div class="meter"><span style="width:${clamp((state.tech.progress / active.cost) * 100, 3, 100)}%"></span></div>
       </div>
     `
     : `<div class="empty-state">No active focus.</div>`;
 
+  const queued = state.tech.queue.map((id) => TECH_LIBRARY.find((tech) => tech.id === id)).filter(Boolean);
   const choices = state.tech.choices.length ? state.tech.choices : drawTechChoices();
+  const allAvailable = TECH_LIBRARY.filter(
+    (tech) => !state.tech.known.includes(tech.id) && state.tech.active?.id !== tech.id && !state.tech.queue.includes(tech.id)
+  );
+  const available = [
+    ...choices,
+    ...allAvailable.filter((tech) => !choices.some((choice) => choice.id === tech.id)),
+  ];
   els.researchPanel.innerHTML = `
     ${activeHtml}
-    <div class="subhead">Alternatives</div>
+    <div class="subhead">Queued Research</div>
     <div class="choice-list">
       ${
-        choices.length
-          ? choices
+        queued.length
+          ? queued
+              .map(
+                (tech, index) => `
+          <div class="queue-row tech-queue-row" title="${escapeHtml(researchSummary(tech))}">
+            <strong>${index + 1}. ${escapeHtml(tech.name)}</strong>
+            <button class="ghost-button" data-action="remove-tech" data-tech="${tech.id}" title="Remove this research from the queue">Remove</button>
+            <span class="queue-meta">${escapeHtml(tech.field)} - ${fmt(tech.cost)} R&D - ${escapeHtml(modifierEffectsText(tech.effects))}</span>
+          </div>
+        `
+              )
+              .join("")
+          : `<div class="empty-state">Queue research projects below.</div>`
+      }
+    </div>
+    <div class="subhead">Research Menu</div>
+    <div class="choice-list">
+      ${
+        available.length
+          ? available
               .map(
                 (choice) => `
-          <button class="choice-button" data-action="choose-tech" data-tech="${choice.id}">
+          <button class="choice-button" data-action="choose-tech" data-tech="${choice.id}" title="${escapeHtml(researchSummary(choice))}">
             <span class="choice-title">${escapeHtml(choice.name)}</span>
-            <span class="choice-text">${escapeHtml(choice.field)} - ${escapeHtml(choice.text)}</span>
+            <span class="choice-text">${escapeHtml(choice.field)} - ${fmt(choice.cost)} R&D</span>
+            <span class="choice-text">${escapeHtml(choice.text)}</span>
+            <span class="choice-text">${escapeHtml(modifierEffectsText(choice.effects))}</span>
           </button>
         `
               )
@@ -5164,7 +5596,9 @@ function handleAction(action, target) {
   if (action === "build-planet") return commandBuildPlanet(Number(data.system), data.building);
   if (action === "build-ship") return commandBuildShip(data.ship);
   if (action === "attack-system") return commandAttack(Number(data.system));
+  if (action === "set-ideology") return commandSetIdeology(data.category, data.ideology);
   if (action === "choose-tech") return chooseTech(data.tech);
+  if (action === "remove-tech") return commandRemoveQueuedResearch(data.tech);
   if (action === "embassy") return improveRelations(data.empire);
   if (action === "rival") return rivalEmpire(data.empire);
   if (action === "declare-war") return declareWar(data.empire, true);
@@ -5181,6 +5615,8 @@ function bindEvents() {
     state.speedIndex = (state.speedIndex + 1) % state.speeds.length;
     updateUI();
   });
+  els.menuSize.addEventListener("input", updateMenuRangeLabels);
+  els.menuAiCount.addEventListener("input", updateMenuRangeLabels);
 
   document.addEventListener("click", (event) => {
     const decision = event.target.closest("[data-decision]");
