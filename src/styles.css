@@ -613,13 +613,44 @@ button:disabled {
 }
 
 .system-ship {
+  --ship-role-angle: 0deg;
   width: 18px;
   height: 18px;
   border-radius: 5px;
+  animation: localShipDrift 2.8s ease-in-out infinite;
+  animation-delay: var(--ship-delay, 0s);
+  transform: translate(-50%, -50%) rotate(calc(var(--ship-tilt, 0deg) + var(--ship-role-angle)));
+}
+
+.system-ship::before,
+.system-ship::after {
+  position: absolute;
+  inset: -5px;
+  border-radius: inherit;
+  content: "";
+  pointer-events: none;
+}
+
+.system-ship::before {
+  border: 1px solid var(--body-color);
+  opacity: 0;
+  animation: shipSignalPulse 2.2s ease-out infinite;
+  animation-delay: var(--ship-delay, 0s);
+}
+
+.system-ship::after {
+  inset: auto 4px -12px;
+  height: 14px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--body-color), transparent);
+  filter: blur(1px);
+  opacity: 0.34;
+  transform-origin: 50% 0;
+  animation: engineFlicker 420ms ease-in-out infinite alternate;
 }
 
 .system-ship.navy {
-  transform: translate(-50%, -50%) rotate(45deg);
+  --ship-role-angle: 45deg;
 }
 
 .system-ship.science {
@@ -628,6 +659,55 @@ button:disabled {
 
 .system-ship.constructor {
   border-radius: 3px;
+}
+
+.system-ship.science::before,
+.system-ship.is-working::before {
+  opacity: 0.3;
+}
+
+.system-ship:not(.is-moving):not(.is-working)::after {
+  opacity: 0.16;
+  animation-duration: 760ms;
+}
+
+.system-ship.is-selected {
+  animation-duration: 2.1s;
+}
+
+@keyframes localShipDrift {
+  0%,
+  100% {
+    transform: translate(-50%, -50%) rotate(calc(var(--ship-tilt, 0deg) + var(--ship-role-angle))) translateY(-1px);
+  }
+
+  50% {
+    transform: translate(-50%, -50%) rotate(calc(var(--ship-tilt, 0deg) + var(--ship-role-angle))) translateY(2px);
+  }
+}
+
+@keyframes shipSignalPulse {
+  0% {
+    opacity: 0.4;
+    transform: scale(0.74);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1.85);
+  }
+}
+
+@keyframes engineFlicker {
+  from {
+    opacity: 0.18;
+    transform: scaleY(0.62);
+  }
+
+  to {
+    opacity: 0.48;
+    transform: scaleY(1.08);
+  }
 }
 
 .station-node {

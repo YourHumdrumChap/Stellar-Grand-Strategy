@@ -2333,6 +2333,10 @@ function renderFleetOrders() {
   const moveDisabled = !system || fleet.order !== "idle" || (fleet.location === system.id && !fleet.route.length);
   const homeId = state.empires.player.homeSystemId;
   const returnDisabled = fleet.location === homeId && !fleet.route.length;
+  const surveyButton =
+    fleet.role === "science" && system
+      ? actionButton("Survey", "survey-system", { system: system.id }, !canSurvey(system), "primary")
+      : "";
   return `
     <div class="subhead">Ship Orders</div>
     <div class="fleet-order-card">
@@ -2343,6 +2347,7 @@ function renderFleetOrders() {
         <span class="mini-tag">${fleet.route.length ? `${fleet.route.length} jumps` : "Local orbit"}</span>
       </div>
       <div class="action-grid">
+        ${surveyButton}
         ${actionButton("Move Here", "move-selected-fleet", { system: system?.id ?? "" }, moveDisabled, "primary")}
         ${actionButton("Return Home", "return-fleet", {}, returnDisabled, "")}
         ${actionButton("Hold", "hold-fleet", {}, fleet.order === "idle" && !fleet.route.length, "")}
@@ -2525,12 +2530,15 @@ function renderSystemShip(system, fleet, index) {
   const color = fleet.role === "science" ? "#4fd1d8" : fleet.role === "constructor" ? "#d7c36a" : "#ec6a64";
   const x = 50 + Math.cos(angle) * radius;
   const y = 50 + Math.sin(angle) * radius;
+  const moving = fleet.route.length ? "is-moving" : "";
+  const working = fleet.order !== "idle" ? "is-working" : "";
   return `
     <button
-      class="system-ship ${fleet.role} ${fleet.id === state.selectedFleetId ? "is-selected" : ""}"
-      style="--body-x:${x}%; --body-y:${y}%; --body-color:${color}; background:${color}"
+      class="system-ship ${fleet.role} ${moving} ${working} ${fleet.id === state.selectedFleetId ? "is-selected" : ""}"
+      style="--body-x:${x}%; --body-y:${y}%; --body-color:${color}; --ship-delay:${index * -0.42}s; --ship-tilt:${Math.round(angle * 40)}deg; background:${color}"
       data-action="select-fleet"
       data-fleet="${fleet.id}"
+      data-order="${escapeHtml(fleet.order)}"
       title="${escapeHtml(fleet.name)}"
       aria-label="${escapeHtml(fleet.name)}"
     ></button>
@@ -2930,19 +2938,23 @@ function drawFleets(time) {
     const pos = fleetPosition(fleet);
     const p = worldToScreen(pos.x, pos.y);
     if (p.x < -40 || p.y < -40 || p.x > viewport.width + 40 || p.y > viewport.height + 40) continue;
-    const color =
-      fleet.owner === "player"
-        ? fleet.role === "science"
-          ? "#4fd1d8"
-          : fleet.role === "constructor"
-            ? "#d7c36a"
-            : "#ec6a64"
-        : fleet.owner === "pirates"
-          ? "#f2b84b"
-          : state.empires[fleet.owner]?.color || "#ffffff";
+    const color = fleetColor(fleet);
+    const moving = fleet.route.length > 0;
+    const next = moving ? state.systems[fleet.route[0]] : null;
+    const routeAngle = next ? Math.atan2(next.y - pos.y, next.x - pos.x) + Math.PI / 2 : Math.sin(time / 950 + fleet.id.length) * 0.2;
+    const bob = Math.sin(time / 360 + fleet.id.length) * (moving ? 1.8 : 1.15);
+    const shimmer = 0.84 + Math.sin(time / 220 + fleet.id.length) * 0.16;
+    const screenX = p.x + Math.cos(routeAngle) * bob;
+    const screenY = p.y + Math.sin(routeAngle) * bob;
+
+    if (moving) drawShipTrail(screenX, screenY, routeAngle, color, shimmer);
+    if (fleet.role === "science" && (moving || fleet.order === "survey")) drawScienceSweep(screenX, screenY, time, color);
+
     ctx.save();
-    ctx.translate(p.x, p.y);
-    ctx.rotate(Math.sin(time / 700 + fleet.id.length) * 0.12);
+    ctx.translate(screenX, screenY);
+    ctx.rotate(routeAngle);
+    ctx.shadowColor = color;
+    ctx.shadowBlur = moving ? 12 : 6;
     ctx.fillStyle = color;
     ctx.strokeStyle = "rgba(0,0,0,0.55)";
     ctx.lineWidth = 1;
@@ -2963,16 +2975,55 @@ function drawFleets(time) {
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
+    ctx.shadowBlur = 0;
     ctx.restore();
 
     if (fleet.id === state.selectedFleetId) {
       ctx.strokeStyle = "#f7fbff";
       ctx.lineWidth = 1.2;
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 14, 0, Math.PI * 2);
+      ctx.arc(screenX, screenY, 14 + Math.sin(time / 260) * 1.6, 0, Math.PI * 2);
       ctx.stroke();
     }
   }
+}
+
+function drawShipTrail(x, y, angle, color, shimmer) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  const gradient = ctx.createLinearGradient(0, 10, 0, 30);
+  gradient.addColorStop(0, hexToRgba(color, 0.5 * shimmer));
+  gradient.addColorStop(1, hexToRgba(color, 0));
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.moveTo(-4, 8);
+  ctx.lineTo(4, 8);
+  ctx.lineTo(0, 28 + shimmer * 6);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawScienceSweep(x, y, time, color) {
+  const radius = 15 + (time / 90) % 14;
+  ctx.save();
+  ctx.strokeStyle = hexToRgba(color, 0.22);
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function fleetColor(fleet) {
+  if (fleet.owner === "player") {
+    if (fleet.role === "science") return "#4fd1d8";
+    if (fleet.role === "constructor") return "#d7c36a";
+    return "#ec6a64";
+  }
+  if (fleet.owner === "pirates") return "#f2b84b";
+  return state.empires[fleet.owner]?.color || "#ffffff";
 }
 
 function drawFleetRoutes() {

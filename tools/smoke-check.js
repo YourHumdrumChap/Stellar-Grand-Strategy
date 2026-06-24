@@ -37,9 +37,12 @@ async function runViewport(browser, viewport) {
     const before = document.getElementById("dateLabel").textContent;
 
     const target = state.systems.find((system) => system.known && !system.surveyedBy.player);
+    let surveyOrderButton = false;
     if (target) {
       state.selectedSystemId = target.id;
+      state.selectedFleetId = "sci-meridian";
       updateUI();
+      surveyOrderButton = Boolean(document.querySelector('.fleet-order-card [data-action="survey-system"]'));
       commandSurvey(target.id);
     }
 
@@ -68,6 +71,7 @@ async function runViewport(browser, viewport) {
       systemBodies: document.querySelectorAll(".system-body").length,
       systemShips: document.querySelectorAll(".system-ship").length,
       shipOrderButtons: document.querySelectorAll(".fleet-order-card [data-action]").length,
+      surveyOrderButton,
       canvasWidth: canvas.width,
       canvasHeight: canvas.height,
       menuVisible,
@@ -89,6 +93,7 @@ async function runViewport(browser, viewport) {
   if (result.systemBodies < 2) throw new Error("Solar system map did not render bodies.");
   if (result.systemShips < 1) throw new Error("Interactive ship tokens did not render in the system map.");
   if (result.shipOrderButtons < 3) throw new Error("Ship order controls did not render.");
+  if (!result.surveyOrderButton) throw new Error("Science ship survey order did not render.");
   if (result.lit < 120) throw new Error("Canvas appears blank.");
   return result;
 }
