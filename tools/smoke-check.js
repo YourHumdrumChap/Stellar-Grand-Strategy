@@ -179,6 +179,11 @@ async function runViewport(browser, viewport) {
       state.buildQueue.length === queueBeforeValidShip + 1 &&
       state.buildQueue.at(-1).type === "ship" &&
       state.buildQueue.at(-1).systemId === moveTarget.id;
+    updateUI();
+    const shipyardQueueRows = document.querySelectorAll("#inspectorPanel .shipyard-queue .queue-row").length;
+    const shipyardQueueShowsShip = [...document.querySelectorAll("#inspectorPanel .shipyard-queue .queue-row")].some((row) =>
+      row.textContent.includes("Science Vessel")
+    );
 
     const scienceCountBefore = state.fleets.filter((fleet) => fleet.owner === "player" && fleet.role === "science").length;
     const constructorCountBefore = state.fleets.filter((fleet) => fleet.owner === "player" && fleet.role === "constructor").length;
@@ -337,6 +342,8 @@ async function runViewport(browser, viewport) {
       constructorBuiltShipyard,
       shipyardUiVisible,
       shipBuildQueuedAtShipyard,
+      shipyardQueueRows,
+      shipyardQueueShowsShip,
       cancelWorked,
       mergeWorked,
       attackFleetButtons,
@@ -440,6 +447,9 @@ async function runViewport(browser, viewport) {
   }
   if (!result.shipyardBuildStarted || !result.constructorBuiltShipyard || !result.shipyardUiVisible || !result.shipBuildQueuedAtShipyard) {
     throw new Error("Buildable shipyard or shipyard-gated ship construction failed.");
+  }
+  if (result.shipyardQueueRows < 1 || !result.shipyardQueueShowsShip) {
+    throw new Error("Selected shipyard did not render its ship-building queue.");
   }
   if (result.panelTabs < 7) throw new Error("Separate panel menu tabs did not render.");
   if (result.politicalIdeologyButtons < 4 || result.economicIdeologyButtons < 4 || !result.ideologyApplied) {

@@ -4661,6 +4661,7 @@ function renderInspector() {
 
 function renderShipyardBlock(system) {
   if (!system.stations.shipyard || system.owner !== "player") return "";
+  const queue = shipyardQueue(system);
   return `
     <div class="subhead">Shipyard</div>
     <div class="colony-row">
@@ -4669,6 +4670,31 @@ function renderShipyardBlock(system) {
       <div class="action-grid">
         ${Object.keys(SHIP_BUILDS).map((key) => shipButton(key, system)).join("")}
       </div>
+      <div class="subhead">Ship Queue</div>
+      <div class="queue-list shipyard-queue">
+        ${
+          queue.length
+            ? queue.map((item, index) => renderShipyardQueueItem(item, index)).join("")
+            : `<div class="empty-state">No ships queued at this shipyard.</div>`
+        }
+      </div>
+    </div>
+  `;
+}
+
+function shipyardQueue(system) {
+  return state.buildQueue.filter((item) => item.type === "ship" && item.owner === "player" && item.systemId === system.id);
+}
+
+function renderShipyardQueueItem(item, index) {
+  const progress = buildQueueProgress(item);
+  return `
+    <div class="queue-row">
+      <strong>${index + 1}. ${escapeHtml(item.label)}</strong>
+      <div class="meter" title="${escapeHtml(`${item.label}: ${Math.round(progress * 100)}% complete`)}">
+        <span style="width:${clamp(progress * 100, 2, 100)}%"></span>
+      </div>
+      <div class="queue-meta">${item.remaining} month${item.remaining === 1 ? "" : "s"} remaining</div>
     </div>
   `;
 }
