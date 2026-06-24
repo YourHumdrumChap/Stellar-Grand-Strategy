@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Star Sovereigns</title>
+    <link rel="stylesheet" href="src/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark"></span>
+          <span>Star Sovereigns</span>
+        </div>
+        <div class="time-controls">
+          <button id="pauseBtn" class="square-button" title="Pause or resume">II</button>
+          <button id="stepBtn" class="square-button" title="Advance one month">+1</button>
+          <button id="speedBtn" class="square-button" title="Change speed">1x</button>
+          <span id="dateLabel" class="date-label">Jan 2200</span>
+        </div>
+        <div id="resourceStrip" class="resource-strip"></div>
+      </header>
+
+      <main class="game-shell">
+        <aside class="left-rail">
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>Empire</h2>
+              <button class="ghost-button" data-action="new-game" title="New galaxy">New</button>
+            </div>
+            <div id="empirePanel"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>Fleets</h2>
+              <button class="ghost-button" data-action="center-home" title="Center capital">Home</button>
+            </div>
+            <div id="fleetPanel"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>Research</h2>
+            </div>
+            <div id="researchPanel"></div>
+          </section>
+        </aside>
+
+        <section class="map-stage">
+          <canvas id="galaxyCanvas" aria-label="Galaxy map"></canvas>
+          <div class="map-toolbar">
+            <button class="map-mode is-active" data-map-mode="political" title="Political map">POL</button>
+            <button class="map-mode" data-map-mode="economy" title="Resource map">ECO</button>
+            <button class="map-mode" data-map-mode="science" title="Science map">SCI</button>
+            <button class="map-mode" data-map-mode="military" title="Military map">MIL</button>
+            <button class="map-mode" data-action="zoom-out" title="Zoom out">-</button>
+            <button class="map-mode" data-action="zoom-in" title="Zoom in">+</button>
+          </div>
+          <div id="toast" class="toast" hidden></div>
+        </section>
+
+        <aside class="right-rail">
+          <section class="panel inspector-panel">
+            <div class="panel-heading">
+              <h2>System</h2>
+              <span id="selectedTag" class="tag">None</span>
+            </div>
+            <div id="inspectorPanel"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>Diplomacy</h2>
+            </div>
+            <div id="diplomacyPanel"></div>
+          </section>
+
+          <section class="panel log-panel">
+            <div class="panel-heading">
+              <h2>Chronicle</h2>
+            </div>
+            <div id="logPanel" class="log-list"></div>
+          </section>
+        </aside>
+      </main>
+    </div>
+
+    <div id="modalBackdrop" class="modal-backdrop" hidden>
+      <section class="modal">
+        <div class="modal-kicker" id="modalKicker">Event</div>
+        <h2 id="modalTitle"></h2>
+        <p id="modalText"></p>
+        <div id="modalOptions" class="modal-options"></div>
+      </section>
+    </div>
+
+    <script src="src/main.js"></script>
+  </body>
+</html>
