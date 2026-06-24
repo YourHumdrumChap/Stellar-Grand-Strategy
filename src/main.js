@@ -1576,6 +1576,19 @@ function createColony(owner, planet, mature = false) {
   };
 }
 
+function createAutoSurveySettings() {
+  return {
+    enabled: false,
+    limits: {
+      unclaimedOnly: true,
+      frontierOnly: false,
+      safeOnly: true,
+      skipAnomalies: false,
+      localRange: false,
+    },
+  };
+}
+
 function createFleets() {
   const home = state.empires.player.homeSystemId;
   state.fleets.push({
@@ -1593,6 +1606,7 @@ function createFleets() {
     maxStrength: 0,
     ships: 1,
     speed: 1.25,
+    autoSurvey: createAutoSurveySettings(),
   });
   state.fleets.push({
     id: "con-dauntless",
@@ -1795,6 +1809,7 @@ function tickMonth() {
   processResearch();
   processBuildQueue();
   updateFleets();
+  processAutoSurvey();
   processFleetRepairs();
   processAI();
   updateKnownFromBorders();
@@ -2016,6 +2031,74 @@ function updateFleets() {
       }
     }
   }
+}
+
+function processAutoSurvey() {
+  for (const fleet of state.fleets) {
+    if (fleet.owner !== "player" || fleet.role !== "science" || fleet.order !== "idle" || fleet.route.length) continue;
+    if (!getAutoSurveySettings(fleet).enabled) continue;
+    assignAutoSurveyTarget(fleet);
+  }
+}
+
+function getAutoSurveySettings(fleet) {
+  if (!fleet.autoSurvey) fleet.autoSurvey = createAutoSurveySettings();
+  fleet.autoSurvey.limits = { ...createAutoSurveySettings().limits, ...(fleet.autoSurvey.limits || {}) };
+  return fleet.autoSurvey;
+}
+
+function assignAutoSurveyTarget(fleet, notifyEmpty = false) {
+  const target = chooseAutoSurveyTarget(fleet);
+  if (!target) {
+    if (notifyEmpty) toast("No auto-survey target matches those limits.");
+    return false;
+  }
+  const sameSystem = fleet.location === target.id;
+  if (setFleetCourse(fleet, target.id, "survey")) {
+    if (!sameSystem) addLog(`${fleet.name} auto-surveys ${target.name}.`, "science");
+    return true;
+  }
+  return false;
+}
+
+function chooseAutoSurveyTarget(fleet) {
+  if (!fleet || fleet.owner !== "player" || fleet.role !== "science") return null;
+  const settings = getAutoSurveySettings(fleet);
+  const activeSurveyTargets = new Set(
+    state.fleets
+      .filter((item) => item.id !== fleet.id && item.owner === "player" && item.role === "science" && item.order === "survey")
+      .map((item) => item.target)
+  );
+  const candidates = [];
+  for (const system of state.systems) {
+    if (!canAutoSurveyTarget(system, fleet, settings, activeSurveyTargets)) continue;
+    const route = routeBetween(fleet.location, system.id, "player");
+    if (!route) continue;
+    if (settings.limits.localRange && route.length > 4) continue;
+    candidates.push({
+      system,
+      route,
+      score:
+        (route.length - 1) * 1000 +
+        systemDistance(state.systems[fleet.location], system) +
+        (system.danger || 0) * 18 -
+        (adjacentToPlayer(system) ? 80 : 0),
+    });
+  }
+  return candidates.sort((a, b) => a.score - b.score)[0]?.system || null;
+}
+
+function canAutoSurveyTarget(system, fleet, settings, activeSurveyTargets = new Set()) {
+  if (!system || !canSurvey(system, fleet)) return false;
+  if (activeSurveyTargets.has(system.id)) return false;
+  const limits = settings.limits;
+  if (limits.unclaimedOnly && system.owner && system.owner !== "player") return false;
+  if (limits.frontierOnly && !adjacentToPlayer(system)) return false;
+  if (limits.safeOnly && (system.danger > 0 || state.fleets.some((item) => item.owner === "pirates" && item.location === system.id))) {
+    return false;
+  }
+  if (limits.skipAnomalies && system.anomaly && !system.anomalyResolved) return false;
+  return true;
 }
 
 function processFleetRepairs() {
@@ -2584,6 +2667,10 @@ function selectedFleet() {
   return state.fleets.find((fleet) => fleet.id === state.selectedFleetId) || null;
 }
 
+function fleetById(fleetId) {
+  return state.fleets.find((fleet) => fleet.id === fleetId) || null;
+}
+
 function canSurvey(system, fleet = selectedFleet()) {
   return Boolean(
     system &&
@@ -2819,7 +2906,27 @@ function commandHoldSelectedFleet() {
   fleet.progress = 0;
   fleet.target = null;
   fleet.order = "idle";
+  if (fleet.role === "science") getAutoSurveySettings(fleet).enabled = false;
   addLog(`${fleet.name} holds position.`);
+  updateUI();
+}
+
+function commandToggleAutoSurvey(fleetId, enabled) {
+  const fleet = fleetById(fleetId) || selectedFleet();
+  if (!fleet || fleet.owner !== "player" || fleet.role !== "science") return;
+  const settings = getAutoSurveySettings(fleet);
+  settings.enabled = Boolean(enabled);
+  if (settings.enabled && fleet.order === "idle" && !fleet.route.length) assignAutoSurveyTarget(fleet, true);
+  updateUI();
+}
+
+function commandToggleAutoSurveyLimit(fleetId, limit, enabled) {
+  const fleet = fleetById(fleetId) || selectedFleet();
+  if (!fleet || fleet.owner !== "player" || fleet.role !== "science") return;
+  const settings = getAutoSurveySettings(fleet);
+  if (!(limit in settings.limits)) return;
+  settings.limits[limit] = Boolean(enabled);
+  if (settings.enabled && fleet.order === "idle" && !fleet.route.length) assignAutoSurveyTarget(fleet, true);
   updateUI();
 }
 
@@ -3448,7 +3555,9 @@ function renderFleetOrders() {
       <div class="inline-stats">
         <span class="mini-tag">${fleet.role === "navy" ? `Power ${fmt(fleet.strength)}` : `${fmt(fleet.ships)} hull`}</span>
         <span class="mini-tag">${fleet.route.length ? `${fleet.route.length} jumps` : "Local orbit"}</span>
+        ${fleet.role === "science" && getAutoSurveySettings(fleet).enabled ? `<span class="mini-tag">Auto Survey</span>` : ""}
       </div>
+      ${fleet.role === "science" ? renderAutoSurveyControls(fleet) : ""}
       <div class="action-grid">
         ${roleOrders}
         ${actionButton("Move Here", "move-selected-fleet", { system: system?.id ?? "" }, moveDisabled, "primary", "No resource cost")}
@@ -3456,6 +3565,50 @@ function renderFleetOrders() {
         ${fleet.role === "navy" ? actionButton("Split Fleet", "split-fleet", {}, !canSplitFleet(fleet), "", "Split this navy fleet into two half-strength fleets") : ""}
         ${actionButton("Hold", "hold-fleet", {}, fleet.order === "idle" && !fleet.route.length, "", "No resource cost")}
         ${system ? actionButton("Focus System", "select-system", { system: system.id }, false, "", "Center the selected system") : ""}
+      </div>
+    </div>
+  `;
+}
+
+function renderAutoSurveyControls(fleet) {
+  const settings = getAutoSurveySettings(fleet);
+  const target = chooseAutoSurveyTarget(fleet);
+  const limitRows = [
+    ["unclaimedOnly", "Unclaimed only"],
+    ["frontierOnly", "Frontier only"],
+    ["safeOnly", "Avoid danger"],
+    ["skipAnomalies", "Skip anomalies"],
+    ["localRange", "3 jumps max"],
+  ];
+  return `
+    <div class="auto-survey-panel">
+      <label class="auto-survey-master">
+        <input
+          type="checkbox"
+          data-action="toggle-auto-survey"
+          data-fleet="${escapeHtml(fleet.id)}"
+          ${settings.enabled ? "checked" : ""}
+        />
+        <span>Auto Survey</span>
+      </label>
+      <div class="auto-survey-status">${target ? `Next: ${escapeHtml(target.name)}` : "No matching targets"}</div>
+      <div class="limit-grid">
+        ${limitRows
+          .map(
+            ([key, label]) => `
+              <label class="limit-toggle">
+                <input
+                  type="checkbox"
+                  data-action="toggle-auto-survey-limit"
+                  data-fleet="${escapeHtml(fleet.id)}"
+                  data-limit="${key}"
+                  ${settings.limits[key] ? "checked" : ""}
+                />
+                <span>${escapeHtml(label)}</span>
+              </label>
+            `
+          )
+          .join("")}
       </div>
     </div>
   `;
@@ -5001,6 +5154,8 @@ function handleAction(action, target) {
   if (action === "return-fleet") return commandReturnSelectedFleet();
   if (action === "split-fleet") return commandSplitFleet();
   if (action === "hold-fleet") return commandHoldSelectedFleet();
+  if (action === "toggle-auto-survey") return commandToggleAutoSurvey(data.fleet, target.checked);
+  if (action === "toggle-auto-survey-limit") return commandToggleAutoSurveyLimit(data.fleet, data.limit, target.checked);
   if (action === "survey-system") return commandSurvey(Number(data.system));
   if (action === "build-outpost") return commandBuildOutpost(Number(data.system));
   if (action === "build-mining") return commandBuildStation(Number(data.system), "mining");

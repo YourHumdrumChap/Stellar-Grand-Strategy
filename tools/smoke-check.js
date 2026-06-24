@@ -41,7 +41,28 @@ async function runViewport(browser, viewport) {
 
     const target = state.systems.find((system) => system.known && !system.surveyedBy.player);
     let surveyOrderButton = false;
+    let autoSurveyToggle = false;
+    let autoSurveyLimitControls = 0;
+    let autoSurveyLimitApplied = false;
+    let autoSurveyTargetFound = false;
+    let autoSurveyCanStart = false;
+    let autoSurveyHeldOff = false;
     if (target) {
+      state.selectedSystemId = target.id;
+      state.selectedFleetId = "sci-meridian";
+      updateUI();
+      const scienceFleet = selectedFleet();
+      autoSurveyToggle = Boolean(document.querySelector('.fleet-order-card [data-action="toggle-auto-survey"]'));
+      autoSurveyLimitControls = document.querySelectorAll('.fleet-order-card [data-action="toggle-auto-survey-limit"]').length;
+      commandToggleAutoSurveyLimit(scienceFleet.id, "localRange", true);
+      autoSurveyLimitApplied = getAutoSurveySettings(scienceFleet).limits.localRange === true;
+      commandToggleAutoSurveyLimit(scienceFleet.id, "localRange", false);
+      autoSurveyTargetFound = Boolean(chooseAutoSurveyTarget(scienceFleet));
+      commandToggleAutoSurvey(scienceFleet.id, true);
+      autoSurveyCanStart =
+        getAutoSurveySettings(scienceFleet).enabled === true && scienceFleet.order === "survey" && scienceFleet.target !== null;
+      commandHoldSelectedFleet();
+      autoSurveyHeldOff = scienceFleet.order === "idle" && getAutoSurveySettings(scienceFleet).enabled === false;
       state.selectedSystemId = target.id;
       state.selectedFleetId = "sci-meridian";
       updateUI();
@@ -129,6 +150,12 @@ async function runViewport(browser, viewport) {
         (item) => item.textContent.trim() === "Orders"
       ),
       surveyOrderButton,
+      autoSurveyToggle,
+      autoSurveyLimitControls,
+      autoSurveyLimitApplied,
+      autoSurveyTargetFound,
+      autoSurveyCanStart,
+      autoSurveyHeldOff,
       territoryLegendRows: document.querySelectorAll("#territoryLegend .territory-legend-row").length,
       infrastructureSystems: state.systems.filter(
         (system) =>
@@ -185,6 +212,11 @@ async function runViewport(browser, viewport) {
   if (result.infrastructureSystems < 1) throw new Error("Galaxy infrastructure icon data was not generated.");
   if (result.systemOrderHeading) throw new Error("System inspector still renders a generic Orders section.");
   if (!result.surveyOrderButton) throw new Error("Science ship survey order did not render.");
+  if (!result.autoSurveyToggle || result.autoSurveyLimitControls < 5) throw new Error("Auto-survey controls did not render.");
+  if (!result.autoSurveyLimitApplied) throw new Error("Auto-survey limit toggle did not apply.");
+  if (!result.autoSurveyTargetFound) throw new Error("Auto-survey could not find a valid target.");
+  if (!result.autoSurveyCanStart) throw new Error("Auto-survey did not assign a science ship target.");
+  if (!result.autoSurveyHeldOff) throw new Error("Hold did not disable science ship auto-survey.");
   if (result.lit < 120) throw new Error("Canvas appears blank.");
   return result;
 }
