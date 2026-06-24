@@ -37,6 +37,13 @@ const els = {
   menuDifficulty: document.getElementById("menuDifficulty"),
   menuScenario: document.getElementById("menuScenario"),
   menuScenarioSummary: document.getElementById("menuScenarioSummary"),
+  supabaseAnonKey: document.getElementById("supabaseAnonKey"),
+  multiplayerMenu: document.getElementById("multiplayerMenu"),
+  multiplayerStatus: document.getElementById("multiplayerStatus"),
+  lobbyList: document.getElementById("lobbyList"),
+  createLobbyMenu: document.getElementById("createLobbyMenu"),
+  lobbyName: document.getElementById("lobbyName"),
+  lobbyPasscode: document.getElementById("lobbyPasscode"),
   startMenuBtn: document.getElementById("startMenuBtn"),
   resumeMenuBtn: document.getElementById("resumeMenuBtn"),
 };
@@ -57,6 +64,10 @@ const MONTHS = [
 ];
 
 const RESOURCE_ORDER = ["energy", "minerals", "alloys", "influence", "unity", "research"];
+const SUPABASE_PROJECT_URL = "https://vdurhudczavpcyehekhc.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_iaqIpxCtKt7Ad2CMcF_O5A_0R0bxOid";
+const SUPABASE_ANON_KEY_STORAGE = "stellarSupabaseAnonKey";
+const MULTIPLAYER_TABLE = "stellar_lobbies";
 const RESOURCE_META = {
   energy: { label: "Energy", color: "#f2b84b" },
   minerals: { label: "Minerals", color: "#9bd389" },
@@ -829,6 +840,22 @@ const SHIP_BUILDS = {
   },
 };
 
+const COMBAT_HULLS = {
+  corvette: { label: "Corvette", power: 5 },
+  frigate: { label: "Frigate", power: 8 },
+  destroyer: { label: "Destroyer", power: 12 },
+  cruiser: { label: "Cruiser", power: 24 },
+  carrier: { label: "Carrier", power: 42 },
+};
+
+const COMBAT_MATCHUPS = {
+  corvette: { carrier: 1.35, cruiser: 0.82, destroyer: 0.92 },
+  frigate: { corvette: 1.25, carrier: 0.86, cruiser: 0.9 },
+  destroyer: { frigate: 1.25, corvette: 1.12, carrier: 0.9 },
+  cruiser: { destroyer: 1.28, frigate: 1.14, corvette: 0.82 },
+  carrier: { cruiser: 1.32, destroyer: 1.12, corvette: 0.72 },
+};
+
 const GALAXY_SIZE_LIMITS = { min: 10, max: 750, default: 108 };
 
 const GALAXY_SHAPES = {
@@ -842,10 +869,10 @@ const GALAXY_SHAPES = {
 };
 
 const AI_DIFFICULTIES = {
-  cadet: { label: "Cadet", economy: 0.78, stockpile: 0.8, fleet: 0.82, expansion: 0.82, aggression: -0.14 },
-  standard: { label: "Standard", economy: 1, stockpile: 1, fleet: 1, expansion: 1, aggression: 0 },
-  veteran: { label: "Veteran", economy: 1.18, stockpile: 1.15, fleet: 1.12, expansion: 1.14, aggression: 0.08 },
-  admiral: { label: "Admiral", economy: 1.38, stockpile: 1.32, fleet: 1.24, expansion: 1.28, aggression: 0.16 },
+  cadet: { label: "Cadet", economy: 0.84, stockpile: 0.86, fleet: 0.9, expansion: 0.9, aggression: -0.1 },
+  standard: { label: "Standard", economy: 1.06, stockpile: 1.06, fleet: 1.07, expansion: 1.06, aggression: 0.03 },
+  veteran: { label: "Veteran", economy: 1.25, stockpile: 1.22, fleet: 1.2, expansion: 1.22, aggression: 0.12 },
+  admiral: { label: "Admiral", economy: 1.46, stockpile: 1.4, fleet: 1.34, expansion: 1.38, aggression: 0.22 },
 };
 
 const SCENARIOS = {
@@ -2321,6 +2348,12 @@ function newGame(seed = Date.now(), galaxySettings = DEFAULT_GALAXY, options = {
     contacts: {},
     piratesSpawned: 0,
     iconKeyOpen: false,
+    multiplayer: {
+      open: false,
+      creating: false,
+      lobbies: [],
+      status: "Paste the project anon key to load online lobbies.",
+    },
   };
 
   applyCurrentIdeologies();
@@ -2918,6 +2951,7 @@ function createFleets() {
     strength: 14,
     maxStrength: 14,
     ships: 3,
+    hulls: { corvette: 3 },
     speed: 1.05,
     autoAttack: createAutoAttackSettings(),
   });
@@ -2927,6 +2961,7 @@ function createFleets() {
     if (homeSystemId === null || homeSystemId === undefined) continue;
     const difficulty = AI_DIFFICULTIES[state.galaxy.difficulty];
     const strength = Math.floor(randRange(13, 21) * difficulty.fleet);
+    const hulls = strength > 18 ? { corvette: 3, frigate: 1 } : { corvette: 4 };
     state.fleets.push({
       id: `fleet-${template.id}`,
       name: `${template.adjective} Spear`,
@@ -2940,7 +2975,8 @@ function createFleets() {
       target: null,
       strength,
       maxStrength: strength,
-      ships: 4,
+      ships: Object.values(hulls).reduce((sum, count) => sum + count, 0),
+      hulls,
       speed: 1.0,
       autoAttack: createAutoAttackSettings(),
     });
@@ -2956,6 +2992,7 @@ function createBackgroundStars() {
       y: Math.sin(theta) * radius,
       size: randRange(0.35, 1.45),
       alpha: randRange(0.25, 0.95),
+      color: pick(["#ffffff", "#dff7ff", "#fff0c6", "#c8d7ff"]),
     });
   }
 }
@@ -3429,9 +3466,12 @@ function completeBuild(item) {
     }
     const fleet = getOrCreateShipyardFleet(item.systemId);
     const strength = item.strength * (1 + state.modifiers.fleetPower);
+    const hull = item.shipKey || inferHullKey(item.label) || "corvette";
+    fleet.hulls = fleetHullCounts(fleet);
+    fleet.hulls[hull] = (fleet.hulls[hull] || 0) + (item.ships || 1);
     fleet.strength += strength;
     fleet.maxStrength += strength;
-    fleet.ships += item.ships;
+    fleet.ships = totalFleetHulls(fleet);
     addLog(`${item.label} joins ${fleet.name} at ${system.name}.`);
   }
 }
@@ -3457,6 +3497,7 @@ function getOrCreateShipyardFleet(systemId) {
     strength: 0,
     maxStrength: 0,
     ships: 0,
+    hulls: {},
     speed: 1.05,
     autoAttack: createAutoAttackSettings(),
   };
@@ -4157,6 +4198,7 @@ function spawnPirates() {
     strength,
     maxStrength: strength,
     ships: Math.max(2, Math.round(strength / 4)),
+    hulls: { corvette: Math.max(2, Math.round(strength / 4)) },
     speed: 0.95,
   });
   state.piratesSpawned += 1;
@@ -4517,6 +4559,7 @@ function commandBuildShip(shipKey, systemId = state.selectedSystemId) {
     owner: "player",
     systemId: system.id,
     label: ship.label,
+    shipKey,
     remaining: months,
     total: months,
     strength: ship.strength,
@@ -4680,11 +4723,22 @@ function canMergeFleet(fleet = selectedFleet()) {
 function commandSplitFleet() {
   const fleet = selectedFleet();
   if (!canSplitFleet(fleet)) return toast("Select an idle combat fleet with at least two ships.");
-  const splitShips = Math.floor(fleet.ships / 2);
+  const originalHulls = fleetHullCounts(fleet);
+  const splitHulls = {};
+  const remainingHulls = {};
+  for (const [hull, count] of Object.entries(originalHulls)) {
+    const splitCount = Math.floor(count / 2);
+    if (splitCount > 0) splitHulls[hull] = splitCount;
+    const remaining = count - splitCount;
+    if (remaining > 0) remainingHulls[hull] = remaining;
+  }
+  if (!Object.keys(splitHulls).length) return toast("Select an idle combat fleet with enough ships to split.");
+  const splitShips = Object.values(splitHulls).reduce((sum, count) => sum + count, 0);
   const splitRatio = splitShips / fleet.ships;
   const splitStrength = Math.max(1, fleet.strength * splitRatio);
   const splitMax = Math.max(splitStrength, fleet.maxStrength * splitRatio);
   fleet.ships -= splitShips;
+  fleet.hulls = remainingHulls;
   fleet.strength = Math.max(1, fleet.strength - splitStrength);
   fleet.maxStrength = Math.max(fleet.strength, fleet.maxStrength - splitMax);
 
@@ -4703,6 +4757,7 @@ function commandSplitFleet() {
     strength: splitStrength,
     maxStrength: splitMax,
     ships: splitShips,
+    hulls: splitHulls,
     speed: fleet.speed,
     autoAttack: createAutoAttackSettings(),
   };
@@ -4717,17 +4772,42 @@ function commandMergeFleet() {
   const others = mergeableFleets(fleet);
   if (!fleet || !others.length) return toast("Select an idle combat fleet sharing a system with another combat fleet.");
   for (const other of others) {
-    fleet.ships += other.ships;
+    fleet.hulls = fleetHullCounts(fleet);
+    const otherHulls = fleetHullCounts(other);
+    for (const [hull, count] of Object.entries(otherHulls)) fleet.hulls[hull] = (fleet.hulls[hull] || 0) + count;
     fleet.strength += other.strength;
     fleet.maxStrength += other.maxStrength;
   }
+  fleet.ships = totalFleetHulls(fleet);
   state.fleets = state.fleets.filter((item) => !others.includes(item));
   const system = state.systems[fleet.location];
   addLog(`${fleet.name} combines with ${others.length} local fleet${others.length === 1 ? "" : "s"} at ${system.name}.`, "war");
   updateUI();
 }
 
-function canAttackFleet(targetFleet, fleet = selectedFleet()) {
+function selectedAttackCapableFleet(targetFleet) {
+  if (!targetFleet) return null;
+  const selected = selectedFleet();
+  if (selected?.owner === "player" && selected.role === "navy" && selected.order === "idle" && routeBetween(selected.location, targetFleet.location, "player")) {
+    return selected;
+  }
+  return state.fleets
+    .filter(
+      (fleet) =>
+        fleet.owner === "player" &&
+        fleet.role === "navy" &&
+        fleet.order === "idle" &&
+        !fleet.route.length &&
+        routeBetween(fleet.location, targetFleet.location, "player")
+    )
+    .sort((a, b) => {
+      const routeA = routeBetween(a.location, targetFleet.location, "player")?.length || 999;
+      const routeB = routeBetween(b.location, targetFleet.location, "player")?.length || 999;
+      return routeA - routeB || fleetCombatPower(b, targetFleet) - fleetCombatPower(a, targetFleet);
+    })[0] || null;
+}
+
+function canAttackFleet(targetFleet, fleet = selectedAttackCapableFleet(targetFleet)) {
   if (!targetFleet || !fleet || fleet.owner !== "player" || fleet.role !== "navy" || fleet.order !== "idle") return false;
   if (!ownersHostile("player", targetFleet.owner)) return false;
   return Boolean(routeBetween(fleet.location, targetFleet.location, "player"));
@@ -4735,10 +4815,11 @@ function canAttackFleet(targetFleet, fleet = selectedFleet()) {
 
 function commandAttackFleet(targetFleetId) {
   const targetFleet = fleetById(targetFleetId);
-  const fleet = selectedFleet();
+  const fleet = selectedAttackCapableFleet(targetFleet);
   if (!canAttackFleet(targetFleet, fleet)) return toast("Select an idle combat fleet and a hostile target fleet.");
   const system = state.systems[targetFleet.location];
   const order = targetFleet.owner === "pirates" ? "hunt-pirates" : "attack";
+  state.selectedFleetId = fleet.id;
   if (setFleetCourse(fleet, system.id, order)) {
     fleet.attackTargetFleetId = targetFleet.id;
     state.selectedAttackFleetId = targetFleet.id;
@@ -4820,16 +4901,82 @@ function hostileFleetsAt(system, owner) {
   );
 }
 
-function fleetCombatPower(fleet) {
+function fleetHullCounts(fleet) {
+  if (!fleet?.hulls || !Object.keys(fleet.hulls).length) {
+    const hull = inferHullKey(fleet?.name) || "corvette";
+    return { [hull]: Math.max(0, fleet?.ships || 0) };
+  }
+  const hulls = {};
+  for (const [key, count] of Object.entries(fleet.hulls)) {
+    if (COMBAT_HULLS[key] && count > 0) hulls[key] = Math.round(count);
+  }
+  return Object.keys(hulls).length ? hulls : { corvette: Math.max(0, fleet.ships || 0) };
+}
+
+function totalFleetHulls(fleet) {
+  return Object.values(fleetHullCounts(fleet)).reduce((sum, count) => sum + count, 0);
+}
+
+function inferHullKey(label = "") {
+  const lower = String(label).toLowerCase();
+  return Object.keys(COMBAT_HULLS).find((key) => lower.includes(key)) || null;
+}
+
+function combatHullPower(hull) {
+  return COMBAT_HULLS[hull]?.power || COMBAT_HULLS.corvette.power;
+}
+
+function matchupMultiplier(attackerHull, defenderHulls) {
+  const defenderTotal = Object.values(defenderHulls).reduce((sum, count) => sum + count, 0);
+  if (!defenderTotal) return 1;
+  let weighted = 0;
+  for (const [defenderHull, count] of Object.entries(defenderHulls)) {
+    weighted += (COMBAT_MATCHUPS[attackerHull]?.[defenderHull] || 1) * count;
+  }
+  return weighted / defenderTotal;
+}
+
+function fleetCombatPower(fleet, defender = null) {
+  const hulls = fleetHullCounts(fleet);
+  const defenderHulls = defender ? fleetHullCounts(defender) : null;
+  let base = 0;
+  for (const [hull, count] of Object.entries(hulls)) {
+    base += count * combatHullPower(hull) * (defenderHulls ? matchupMultiplier(hull, defenderHulls) : 1);
+  }
+  if (!base) base = fleet.strength || 1;
+  const healthRatio = fleet.maxStrength > 0 ? clamp(fleet.strength / fleet.maxStrength, 0.2, 1.15) : 1;
   const playerMod = fleet.owner === "player" ? state.modifiers.fleetPower + state.modifiers.fleetMorale : 0;
-  return Math.max(1, fleet.strength * (1 + playerMod));
+  return Math.max(1, base * healthRatio * (1 + playerMod));
+}
+
+function describeCombatMatchup(attacker, defender) {
+  const attackerHulls = fleetHullCounts(attacker);
+  const defenderHulls = fleetHullCounts(defender);
+  let best = null;
+  for (const [attackerHull, attackerCount] of Object.entries(attackerHulls)) {
+    for (const [defenderHull, defenderCount] of Object.entries(defenderHulls)) {
+      const multiplier = COMBAT_MATCHUPS[attackerHull]?.[defenderHull] || 1;
+      const score = multiplier * attackerCount * defenderCount;
+      if (!best || score > best.score) best = { attackerHull, defenderHull, multiplier, score };
+    }
+  }
+  if (!best || best.multiplier < 1.08) return "mixed hulls trade even fire";
+  return `${COMBAT_HULLS[best.attackerHull].label}s press their advantage against ${COMBAT_HULLS[best.defenderHull].label.toLowerCase()}s`;
 }
 
 function damageFleet(fleet, lossFactor) {
   const beforeShips = fleet.ships;
   const beforeStrength = fleet.strength;
   fleet.strength = Math.max(0, fleet.strength * (1 - lossFactor));
-  const remainingShips = Math.max(0, Math.round(beforeShips * (1 - lossFactor * 0.85)));
+  const hulls = fleetHullCounts(fleet);
+  const remainingHulls = {};
+  let remainingShips = 0;
+  for (const [hull, count] of Object.entries(hulls)) {
+    const remaining = Math.max(0, Math.round(count * (1 - lossFactor * 0.85)));
+    if (remaining > 0) remainingHulls[hull] = remaining;
+    remainingShips += remaining;
+  }
+  fleet.hulls = remainingHulls;
   fleet.ships = remainingShips;
   if (beforeShips > 0) fleet.maxStrength = Math.max(fleet.strength, fleet.maxStrength * (remainingShips / beforeShips));
   if (fleet.strength < 1.2 || fleet.ships < 1) {
@@ -4858,8 +5005,9 @@ function resolveFleetCombat(attacker, defenders, system) {
   if (attacker.attackTargetFleetId) {
     defenders = defenders.slice().sort((a, b) => (a.id === attacker.attackTargetFleetId ? -1 : b.id === attacker.attackTargetFleetId ? 1 : 0));
   }
-  const defenderPower = defenders.reduce((sum, fleet) => sum + fleetCombatPower(fleet), 0);
-  const attackerRoll = fleetCombatPower(attacker) * randRange(0.82, 1.24);
+  const primaryDefender = defenders[0];
+  const defenderPower = defenders.reduce((sum, defender) => sum + fleetCombatPower(defender, attacker), 0);
+  const attackerRoll = defenders.reduce((sum, defender) => sum + fleetCombatPower(attacker, defender), 0) * randRange(0.82, 1.24);
   const defenderRoll = defenderPower * randRange(0.82, 1.24);
   const attackerWins = attackerRoll >= defenderRoll;
   const attackerLoss = attackerWins
@@ -4890,8 +5038,9 @@ function resolveFleetCombat(attacker, defenders, system) {
   const defenderLost = defenderDamage.reduce((sum, item) => sum + item.damage.shipsLost, 0);
   const attackerText = attackerDamage.shipsLost ? `${attackerDamage.shipsLost} ships lost` : "ships damaged";
   const defenderText = defenderLost ? `${defenderLost} ships lost` : "enemy ships damaged";
+  const matchupText = primaryDefender ? describeCombatMatchup(attacker, primaryDefender) : "mixed hulls trade fire";
   addLog(
-    `${attacker.name} ${attackerWins ? "wins" : "loses"} a fleet engagement against ${defenderNames} at ${system.name}; ${attackerText}, ${defenderText}.`,
+    `${attacker.name} ${attackerWins ? "wins" : "loses"} a fleet engagement against ${defenderNames} at ${system.name}; ${matchupText}; ${attackerText}, ${defenderText}.`,
     "war"
   );
   for (const fleet of destroyed) addLog(`${fleet.name} is destroyed at ${system.name}.`, "war");
@@ -5038,6 +5187,7 @@ function updateUI() {
   renderLog();
   renderModal();
   renderMainMenu();
+  renderMultiplayerMenu();
   renderPanelMenus();
   renderTerritoryLegend();
   renderIconKeyWindow();
@@ -5073,6 +5223,205 @@ function openMainMenu() {
 function resumeGame() {
   state.menuOpen = false;
   updateUI();
+}
+
+function renderMultiplayerMenu() {
+  if (!els.multiplayerMenu || !state?.multiplayer) return;
+  els.multiplayerMenu.hidden = !state.multiplayer.open;
+  els.createLobbyMenu.hidden = !state.multiplayer.creating;
+  if (els.supabaseAnonKey && document.activeElement !== els.supabaseAnonKey) {
+    els.supabaseAnonKey.value = getSupabaseAnonKey();
+  }
+  els.multiplayerStatus.textContent = state.multiplayer.status;
+  els.lobbyList.innerHTML = state.multiplayer.lobbies.length
+    ? state.multiplayer.lobbies.map(renderLobbyRow).join("")
+    : `<div class="empty-state">No active lobbies loaded.</div>`;
+}
+
+function renderLobbyRow(lobby) {
+  const settings = lobby.settings || {};
+  const label = `${settings.size || "?"} systems - ${settings.shape || "galaxy"} - ${settings.difficulty || "standard"}`;
+  return `
+    <div class="lobby-row">
+      <div>
+        <strong>${escapeHtml(lobby.name || "Unnamed Lobby")}</strong>
+        <span>${escapeHtml(label)}</span>
+      </div>
+      <input data-lobby-passcode="${escapeHtml(lobby.id)}" type="password" placeholder="Passcode" title="Enter this lobby's passcode" />
+      <button class="ghost-button" data-action="join-lobby" data-lobby="${escapeHtml(lobby.id)}" title="Join this passcode-protected multiplayer lobby">Join</button>
+    </div>
+  `;
+}
+
+function openMultiplayerMenu() {
+  state.multiplayer.open = true;
+  state.multiplayer.creating = false;
+  state.multiplayer.status = getSupabaseAnonKey()
+    ? "Publishable key configured. Refresh lobbies to connect."
+    : "Paste the project anon key to load online lobbies.";
+  updateUI();
+}
+
+function showCreateLobbyMenu() {
+  state.multiplayer.open = true;
+  state.multiplayer.creating = true;
+  updateUI();
+}
+
+function hideCreateLobbyMenu() {
+  state.multiplayer.creating = false;
+  updateUI();
+}
+
+function getSupabaseAnonKey() {
+  try {
+    return window.localStorage.getItem(SUPABASE_ANON_KEY_STORAGE) || SUPABASE_PUBLISHABLE_KEY;
+  } catch {
+    return SUPABASE_PUBLISHABLE_KEY;
+  }
+}
+
+function saveSupabaseAnonKey(value) {
+  try {
+    const clean = value.trim();
+    if (clean) {
+      window.localStorage.setItem(SUPABASE_ANON_KEY_STORAGE, clean);
+    } else {
+      window.localStorage.removeItem(SUPABASE_ANON_KEY_STORAGE);
+    }
+  } catch {
+    // Local storage can be unavailable in hardened browser contexts.
+  }
+}
+
+function multiplayerHeaders(extra = {}) {
+  const key = getSupabaseAnonKey();
+  return {
+    apikey: key,
+    Authorization: `Bearer ${key}`,
+    "Content-Type": "application/json",
+    ...extra,
+  };
+}
+
+async function supabaseRequest(path, options = {}) {
+  const key = getSupabaseAnonKey();
+  if (!key) throw new Error("Missing Supabase anon key.");
+  const response = await fetch(`${SUPABASE_PROJECT_URL}${path}`, {
+    ...options,
+    headers: multiplayerHeaders(options.headers || {}),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `Supabase request failed (${response.status}).`);
+  }
+  if (response.status === 204) return null;
+  return response.json();
+}
+
+async function passcodeHash(passcode) {
+  const bytes = new TextEncoder().encode(passcode);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function clientId() {
+  const key = "stellarClientId";
+  try {
+    let id = window.localStorage.getItem(key);
+    if (!id) {
+      id = crypto.randomUUID();
+      window.localStorage.setItem(key, id);
+    }
+    return id;
+  } catch {
+    return "local-client";
+  }
+}
+
+async function refreshLobbies() {
+  try {
+    state.multiplayer.open = true;
+    state.multiplayer.status = "Loading active lobbies...";
+    renderMultiplayerMenu();
+    const rows = await supabaseRequest(
+      `/rest/v1/${MULTIPLAYER_TABLE}?select=id,name,seed,settings,status,player_count,created_at,updated_at&status=eq.open&order=updated_at.desc&limit=20`
+    );
+    state.multiplayer.lobbies = Array.isArray(rows) ? rows : [];
+    state.multiplayer.status = state.multiplayer.lobbies.length
+      ? `${state.multiplayer.lobbies.length} active lobby${state.multiplayer.lobbies.length === 1 ? "" : "ies"} found.`
+      : "No active lobbies found.";
+  } catch (error) {
+    state.multiplayer.status = `Supabase: ${error.message}`;
+  }
+  updateUI();
+}
+
+async function createMultiplayerLobby() {
+  const name = (els.lobbyName.value || "Commonwealth Lobby").trim();
+  const passcode = (els.lobbyPasscode.value || "").trim();
+  if (!passcode) {
+    state.multiplayer.status = "Create lobby requires a passcode.";
+    return updateUI();
+  }
+  try {
+    state.multiplayer.status = "Creating lobby...";
+    renderMultiplayerMenu();
+    const { seed, settings } = readMenuSettings();
+    const payload = {
+      name,
+      passcode_hash: await passcodeHash(passcode),
+      seed,
+      settings,
+      status: "open",
+      player_count: 1,
+      host_id: clientId(),
+      updated_at: new Date().toISOString(),
+    };
+    await supabaseRequest(`/rest/v1/${MULTIPLAYER_TABLE}`, {
+      method: "POST",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify(payload),
+    });
+    els.lobbyPasscode.value = "";
+    state.multiplayer.creating = false;
+    state.multiplayer.status = "Lobby created.";
+    await refreshLobbies();
+  } catch (error) {
+    state.multiplayer.status = `Supabase: ${error.message}`;
+    updateUI();
+  }
+}
+
+async function joinMultiplayerLobby(lobbyId) {
+  const passInput = document.querySelector(`[data-lobby-passcode="${CSS.escape(lobbyId)}"]`);
+  const passcode = (passInput?.value || "").trim();
+  if (!passcode) {
+    state.multiplayer.status = "Enter the lobby passcode first.";
+    return updateUI();
+  }
+  try {
+    state.multiplayer.status = "Joining lobby...";
+    renderMultiplayerMenu();
+    const hash = await passcodeHash(passcode);
+    const rows = await supabaseRequest(
+      `/rest/v1/${MULTIPLAYER_TABLE}?select=*&id=eq.${encodeURIComponent(lobbyId)}&passcode_hash=eq.${hash}&status=eq.open&limit=1`
+    );
+    const lobby = rows?.[0];
+    if (!lobby) throw new Error("Lobby not found or passcode rejected.");
+    await supabaseRequest(`/rest/v1/${MULTIPLAYER_TABLE}?id=eq.${encodeURIComponent(lobbyId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        player_count: Math.max(2, (lobby.player_count || 1) + 1),
+        updated_at: new Date().toISOString(),
+      }),
+    });
+    newGame(lobby.seed || randomSeed(), lobby.settings || DEFAULT_GALAXY, { menuOpen: false });
+    addLog(`Joined multiplayer lobby: ${lobby.name}.`, "major");
+  } catch (error) {
+    state.multiplayer.status = `Supabase: ${error.message}`;
+    updateUI();
+  }
 }
 
 function syncMenuControls() {
@@ -6425,15 +6774,77 @@ function drawBackdrop(time) {
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, viewport.width, viewport.height);
 
+  drawGalacticDisk(time);
+
   for (const star of state.backgroundStars) {
     const p = worldToScreen(star.x, star.y);
     if (p.x < -20 || p.y < -20 || p.x > viewport.width + 20 || p.y > viewport.height + 20) continue;
     const twinkle = 0.75 + Math.sin(time / 900 + star.x * 0.01) * 0.15;
     ctx.globalAlpha = star.alpha * twinkle;
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = star.color || "#ffffff";
     ctx.fillRect(p.x, p.y, Math.max(0.6, star.size * state.camera.zoom), Math.max(0.6, star.size * state.camera.zoom));
   }
   ctx.globalAlpha = 1;
+}
+
+function drawGalacticDisk(time) {
+  const core = worldToScreen(0, 0);
+  const zoom = clamp(state.camera.zoom, 0.22, 1.4);
+  const diskRadius = state.galaxy.scale * zoom * 1.42;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+
+  const halo = ctx.createRadialGradient(core.x, core.y, 0, core.x, core.y, diskRadius);
+  halo.addColorStop(0, "rgba(255, 232, 172, 0.38)");
+  halo.addColorStop(0.08, "rgba(255, 196, 102, 0.18)");
+  halo.addColorStop(0.34, "rgba(91, 168, 210, 0.075)");
+  halo.addColorStop(0.72, "rgba(78, 111, 156, 0.032)");
+  halo.addColorStop(1, "rgba(0, 0, 0, 0)");
+  ctx.fillStyle = halo;
+  ctx.beginPath();
+  ctx.ellipse(core.x, core.y, diskRadius, diskRadius * 0.62, -0.22, 0, Math.PI * 2);
+  ctx.fill();
+
+  for (let arm = 0; arm < 5; arm += 1) {
+    drawDustArm(core, diskRadius, arm, time);
+  }
+
+  const coreGradient = ctx.createRadialGradient(core.x, core.y, 0, core.x, core.y, Math.max(36, diskRadius * 0.18));
+  coreGradient.addColorStop(0, "rgba(255, 245, 208, 0.9)");
+  coreGradient.addColorStop(0.23, "rgba(248, 195, 95, 0.42)");
+  coreGradient.addColorStop(0.62, "rgba(109, 193, 220, 0.08)");
+  coreGradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+  ctx.fillStyle = coreGradient;
+  ctx.beginPath();
+  ctx.arc(core.x, core.y, Math.max(36, diskRadius * 0.18), 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.globalCompositeOperation = "source-over";
+  ctx.strokeStyle = "rgba(255, 225, 164, 0.28)";
+  ctx.lineWidth = clamp(1.2 * zoom, 0.7, 2.4);
+  ctx.beginPath();
+  ctx.arc(core.x, core.y, Math.max(18, 42 * zoom), 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawDustArm(core, diskRadius, arm, time) {
+  const turn = time / 90000;
+  const start = (arm / 5) * Math.PI * 2 + turn;
+  ctx.beginPath();
+  for (let step = 0; step < 150; step += 1) {
+    const t = step / 149;
+    const radius = diskRadius * (0.1 + t * 0.82);
+    const angle = start + t * Math.PI * 2.05 + Math.sin(t * 7 + arm) * 0.12;
+    const squeeze = 0.62;
+    const x = core.x + Math.cos(angle) * radius;
+    const y = core.y + Math.sin(angle) * radius * squeeze;
+    if (step === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.strokeStyle = arm % 2 ? "rgba(62, 129, 176, 0.12)" : "rgba(236, 206, 148, 0.1)";
+  ctx.lineWidth = clamp(diskRadius * 0.014, 4, 17);
+  ctx.stroke();
 }
 
 function drawHyperlanes() {
@@ -7275,6 +7686,12 @@ function handleAction(action, target) {
   if (action === "open-menu") return openMainMenu();
   if (action === "resume-game") return resumeGame();
   if (action === "start-menu-game") return startMenuGame();
+  if (action === "open-multiplayer") return openMultiplayerMenu();
+  if (action === "refresh-lobbies") return refreshLobbies();
+  if (action === "show-create-lobby") return showCreateLobbyMenu();
+  if (action === "hide-create-lobby") return hideCreateLobbyMenu();
+  if (action === "create-lobby") return createMultiplayerLobby();
+  if (action === "join-lobby") return joinMultiplayerLobby(data.lobby);
   if (action === "randomize-seed") return randomizeMenuSeed();
   if (action === "center-home") {
     selectSystem(state.empires.player.homeSystemId, true);
@@ -7367,6 +7784,13 @@ function bindEvents() {
   els.menuSize.addEventListener("input", updateMenuRangeLabels);
   els.menuAiCount.addEventListener("input", updateMenuRangeLabels);
   els.menuScenario.addEventListener("change", updateMenuRangeLabels);
+  els.supabaseAnonKey.addEventListener("input", (event) => {
+    saveSupabaseAnonKey(event.target.value);
+    state.multiplayer.status = event.target.value.trim()
+      ? "Anon key saved. Refresh lobbies to connect."
+      : "Using configured publishable key. Refresh lobbies to connect.";
+    renderMultiplayerMenu();
+  });
 
   document.addEventListener("click", (event) => {
     const decision = event.target.closest("[data-decision]");

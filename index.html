@@ -181,8 +181,44 @@
         </div>
         <div class="menu-actions">
           <button id="startMenuBtn" class="menu-button primary" data-action="start-menu-game" title="Generate a new galaxy with these settings">Begin Galaxy</button>
+          <button id="multiplayerBtn" class="menu-button" data-action="open-multiplayer" title="Open online multiplayer lobbies hosted through Supabase">Multiplayer</button>
           <button class="menu-button" data-action="randomize-seed" title="Roll a new procedural seed">Random Seed</button>
           <button id="resumeMenuBtn" class="menu-button" data-action="resume-game" title="Return to the current campaign">Resume</button>
+        </div>
+        <div id="multiplayerMenu" class="multiplayer-menu" hidden>
+          <div class="multiplayer-head">
+            <div>
+              <strong>Online Multiplayer</strong>
+              <span>Supabase lobbies require a passcode.</span>
+            </div>
+            <button class="ghost-button" data-action="refresh-lobbies" title="Refresh the active multiplayer lobby list">Refresh</button>
+          </div>
+          <label class="menu-field">
+            <span>Supabase Anon Key</span>
+            <input id="supabaseAnonKey" type="password" autocomplete="off" placeholder="Paste public anon key" />
+          </label>
+          <div id="multiplayerStatus" class="menu-scenario-copy multiplayer-status">Publishable key configured. Refresh lobbies to connect.</div>
+          <div id="lobbyList" class="lobby-list"></div>
+          <div class="menu-actions">
+            <button class="menu-button primary" data-action="show-create-lobby" title="Create a new passcode-protected lobby using the settings above">Create Lobby</button>
+          </div>
+          <div id="createLobbyMenu" class="create-lobby-menu" hidden>
+            <div class="menu-grid">
+              <label class="menu-field">
+                <span>Lobby Name</span>
+                <input id="lobbyName" maxlength="48" value="Commonwealth Lobby" />
+              </label>
+              <label class="menu-field">
+                <span>Passcode</span>
+                <input id="lobbyPasscode" type="password" maxlength="32" placeholder="Required" />
+              </label>
+            </div>
+            <div class="small-note" style="margin-top:8px">The lobby uses the galaxy type, size, seed, AI count, difficulty, and scenario selected above.</div>
+            <div class="menu-actions">
+              <button class="menu-button primary" data-action="create-lobby" title="Create this Supabase lobby with the selected singleplayer settings">Create</button>
+              <button class="menu-button" data-action="hide-create-lobby" title="Return to the active lobby list">Cancel</button>
+            </div>
+          </div>
         </div>
       </section>
     </div>

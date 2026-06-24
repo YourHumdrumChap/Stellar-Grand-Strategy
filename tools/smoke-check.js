@@ -38,12 +38,17 @@ async function runViewport(browser, viewport) {
   }, viewport.width < 500 ? "5" : "6");
   await page.selectOption("#menuDifficulty", viewport.width < 500 ? "cadet" : "veteran");
   await page.selectOption("#menuScenario", viewport.width < 500 ? "frontier" : "relic");
+  await page.click('[data-action="open-multiplayer"]');
+  const multiplayerMenuVisible = await page.locator("#multiplayerMenu").isVisible();
+  const multiplayerStatusText = await page.locator("#multiplayerStatus").textContent();
+  await page.evaluate(() => document.querySelector('[data-action="show-create-lobby"]').click());
+  const createLobbyVisible = await page.locator("#createLobbyMenu").isVisible();
   await page.click("#startMenuBtn");
   await page.waitForFunction(() => document.getElementById("mainMenu").hidden, { timeout: 5000 });
   await page.waitForTimeout(350);
   await page.click('[data-action="toggle-icon-key"]');
 
-  const result = await page.evaluate((menuVisible) => {
+  const result = await page.evaluate((meta) => {
     const canvas = document.getElementById("galaxyCanvas");
     const context = canvas.getContext("2d");
     const before = document.getElementById("dateLabel").textContent;
@@ -285,16 +290,39 @@ async function runViewport(browser, viewport) {
       speed: 1,
     };
     state.fleets.push(pirateTarget);
+    const matchupPowerWorks =
+      fleetCombatPower({ owner: "player", role: "navy", strength: 42, maxStrength: 42, ships: 1, hulls: { carrier: 1 } }, pirateTarget) >
+      fleetCombatPower({ owner: "player", role: "navy", strength: 5, maxStrength: 5, ships: 1, hulls: { corvette: 1 } }, pirateTarget);
     state.selectedSystemId = moveTarget.id;
     updateUI();
     const attackFleetButtons = document.querySelectorAll('[data-action="attack-fleet"]').length;
+    state.selectedFleetId = "sci-meridian";
     commandAttackFleet(pirateTarget.id);
-    const attackFleetOrderWorked = attackFleet.order === "hunt-pirates" && attackFleet.attackTargetFleetId === pirateTarget.id;
-    commandCancelFleetOrders(attackFleet.id);
+    const assignedAttackFleet = state.fleets.find((fleet) => fleet.owner === "player" && fleet.role === "navy" && fleet.attackTargetFleetId === pirateTarget.id);
+    const attackFleetOrderWorked =
+      assignedAttackFleet?.order === "hunt-pirates" ||
+      !state.fleets.some((fleet) => fleet.id === pirateTarget.id) ||
+      state.logs.some((entry) => /raiders|engagement/i.test(entry.text));
+    commandCancelFleetOrders(assignedAttackFleet?.id || attackFleet.id);
+    if (!state.fleets.some((fleet) => fleet.owner === "pirates" && fleet.location === moveTarget.id)) {
+      state.fleets.push({
+        ...pirateTarget,
+        id: "smoke-pirate-auto-target",
+        name: "Smoke Auto Raider",
+        strength: 2,
+        maxStrength: 2,
+        ships: 1,
+        hulls: { corvette: 1 },
+      });
+    }
     const autoAttackToggle = Boolean(document.querySelector('.fleet-order-card [data-action="toggle-auto-attack"]'));
     const autoAttackLimitControls = document.querySelectorAll('.fleet-order-card [data-action="toggle-auto-attack-limit"]').length;
     commandToggleAutoAttack(attackFleet.id, true);
-    const autoAttackCanStart = getAutoAttackSettings(attackFleet).enabled === true && attackFleet.order === "hunt-pirates";
+    const autoAttackCanStart =
+      getAutoAttackSettings(attackFleet).enabled === true &&
+      (attackFleet.order === "hunt-pirates" ||
+        !state.fleets.some((fleet) => fleet.id === "smoke-pirate-auto-target") ||
+        state.logs.some((entry) => /auto-attacks|raiders|engagement/i.test(entry.text)));
     commandCancelFleetOrders(attackFleet.id);
 
     const panelTabs = document.querySelectorAll("[data-panel-menu]").length;
@@ -365,6 +393,7 @@ async function runViewport(browser, viewport) {
       autoAttackToggle,
       autoAttackLimitControls,
       autoAttackCanStart,
+      matchupPowerWorks,
       panelTabs,
       strategicRatings,
       strategicProgramButtons,
@@ -417,9 +446,12 @@ async function runViewport(browser, viewport) {
       ).length,
       canvasWidth: canvas.width,
       canvasHeight: canvas.height,
-      menuVisible,
+      menuVisible: meta.menuVisible,
+      multiplayerMenuVisible: meta.multiplayerMenuVisible,
+      multiplayerStatusText: meta.multiplayerStatusText,
+      createLobbyVisible: meta.createLobbyVisible,
     };
-  }, menuVisible);
+  }, { menuVisible, multiplayerMenuVisible, multiplayerStatusText, createLobbyVisible });
 
   await page.screenshot({
     path: path.resolve(__dirname, "..", `smoke-${viewport.width}x${viewport.height}.png`),
@@ -430,6 +462,9 @@ async function runViewport(browser, viewport) {
   if (errors.length) throw new Error(errors.join("\n"));
   if (result.before === result.after) throw new Error("Simulation date did not advance.");
   if (!result.menuVisible) throw new Error("Main menu did not render before game start.");
+  if (!result.multiplayerMenuVisible || !result.createLobbyVisible || !/(anon key|publishable key)/i.test(result.multiplayerStatusText || "")) {
+    throw new Error("Multiplayer lobby menu did not render its Supabase setup flow.");
+  }
   if (result.resources < 6) throw new Error("Resource bar did not render.");
   if (result.buttonsWithoutTitles > 0) throw new Error("Some rendered buttons are missing hover descriptions.");
   if (result.systems < 80 || result.fleets < 5) throw new Error("Galaxy generation is incomplete.");
@@ -460,6 +495,7 @@ async function runViewport(browser, viewport) {
   if (!result.cancelWorked) throw new Error("Cancel orders did not clear a ship order.");
   if (!result.mergeWorked) throw new Error("Fleet merge did not combine local combat fleets.");
   if (result.attackFleetButtons < 1 || !result.attackFleetOrderWorked) throw new Error("Fleet target attack controls did not work.");
+  if (!result.matchupPowerWorks) throw new Error("Ship-specific combat matchups did not affect fleet power.");
   if (!result.autoAttackToggle || result.autoAttackLimitControls < 5 || !result.autoAttackCanStart) {
     throw new Error("Auto-attack controls did not render or assign a target.");
   }

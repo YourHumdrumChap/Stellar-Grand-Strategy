@@ -1297,8 +1297,9 @@ button:disabled {
   position: fixed;
   inset: 0;
   display: grid;
-  place-items: center;
+  place-items: start center;
   padding: 20px;
+  overflow-y: auto;
   background:
     linear-gradient(180deg, rgba(3, 6, 10, 0.78), rgba(3, 6, 10, 0.96)),
     #03060a;
@@ -1320,6 +1321,7 @@ button:disabled {
 .menu-panel {
   position: relative;
   width: min(720px, 100%);
+  margin: auto 0;
   padding: 26px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 8px;
@@ -1415,6 +1417,57 @@ button:disabled {
 .menu-button.primary {
   border-color: rgba(79, 209, 216, 0.56);
   background: rgba(79, 209, 216, 0.18);
+}
+
+.multiplayer-menu {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.multiplayer-head,
+.lobby-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.multiplayer-head span,
+.lobby-row span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.multiplayer-status {
+  grid-column: 1 / -1;
+}
+
+.lobby-list {
+  display: grid;
+  gap: 7px;
+}
+
+.lobby-row {
+  grid-template-columns: minmax(0, 1fr) minmax(112px, 0.45fr) auto;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.lobby-row input {
+  min-width: 0;
+}
+
+.create-lobby-menu {
+  padding: 10px;
+  border: 1px solid rgba(79, 209, 216, 0.18);
+  border-radius: 7px;
+  background: rgba(79, 209, 216, 0.055);
 }
 
 .empty-state {
@@ -1557,8 +1610,13 @@ button:disabled {
   }
 
   .menu-field-wide,
-  .menu-scenario-copy {
+  .menu-scenario-copy,
+  .lobby-row {
     grid-column: 1;
+  }
+
+  .lobby-row {
+    grid-template-columns: 1fr;
   }
 
   .menu-panel {
