@@ -506,6 +506,10 @@ button:disabled {
   gap: 8px;
 }
 
+.strategic-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .stat {
   padding: 8px;
   border: 1px solid rgba(255, 255, 255, 0.09);
@@ -1356,6 +1360,22 @@ button:disabled {
   gap: 6px;
 }
 
+.menu-field-wide,
+.menu-scenario-copy {
+  grid-column: span 2;
+}
+
+.menu-scenario-copy {
+  align-self: end;
+  padding: 9px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--soft);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .menu-field span {
   color: var(--muted);
   font-size: 10px;
@@ -1534,6 +1554,11 @@ button:disabled {
 
   .menu-grid {
     grid-template-columns: 1fr;
+  }
+
+  .menu-field-wide,
+  .menu-scenario-copy {
+    grid-column: 1;
   }
 
   .menu-panel {

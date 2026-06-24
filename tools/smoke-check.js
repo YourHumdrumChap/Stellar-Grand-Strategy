@@ -37,6 +37,7 @@ async function runViewport(browser, viewport) {
     input.dispatchEvent(new Event("input", { bubbles: true }));
   }, viewport.width < 500 ? "5" : "6");
   await page.selectOption("#menuDifficulty", viewport.width < 500 ? "cadet" : "veteran");
+  await page.selectOption("#menuScenario", viewport.width < 500 ? "frontier" : "relic");
   await page.click("#startMenuBtn");
   await page.waitForFunction(() => document.getElementById("mainMenu").hidden, { timeout: 5000 });
   await page.waitForTimeout(350);
@@ -300,6 +301,16 @@ async function runViewport(browser, viewport) {
     selectSystem(home.id, false);
     state.selectedFleetId = attackFleet.id;
     updateUI();
+    const strategicRatings = getEmpireRatings("player");
+    const strategicProgramButtons = document.querySelectorAll('[data-action="enact-program"]').length;
+    const programModifiersBefore = state.timedModifiers.length;
+    state.resources.energy += 500;
+    state.resources.unity += 500;
+    commandEnactProgram("program-frontier-survey");
+    const programApplied =
+      state.timedModifiers.length === programModifiersBefore + 1 &&
+      state.timedModifiers.some((modifier) => modifier.id.startsWith("program-frontier-survey-"));
+    const scenarioSummaryVisible = document.querySelector("#menuScenarioSummary")?.textContent.length > 20;
 
     const data = context.getImageData(0, 0, canvas.width, canvas.height).data;
     let lit = 0;
@@ -321,7 +332,10 @@ async function runViewport(browser, viewport) {
       uniqueSystemNames: new Set(SYSTEM_NAMES).size,
       shape: state.galaxy.shape,
       difficulty: state.galaxy.difficulty,
+      scenario: state.galaxy.scenario,
+      scenarioSummaryVisible,
       researchables: TECH_LIBRARY.length,
+      events: SPACE_EVENTS.length,
       allResearchHaveModifiers,
       researchQueued,
       researchQueueButtons,
@@ -352,6 +366,9 @@ async function runViewport(browser, viewport) {
       autoAttackLimitControls,
       autoAttackCanStart,
       panelTabs,
+      strategicRatings,
+      strategicProgramButtons,
+      programApplied,
       politicalIdeologyButtons,
       economicIdeologyButtons,
       ideologyApplied,
@@ -422,7 +439,11 @@ async function runViewport(browser, viewport) {
   }
   if (result.aiCount !== (viewport.width < 500 ? 5 : 6)) throw new Error("AI empire counter was not applied.");
   if (result.difficulty !== (viewport.width < 500 ? "cadet" : "veteran")) throw new Error("AI difficulty was not applied.");
-  if (result.researchables < 20) throw new Error("Expanded research deck did not load.");
+  if (result.scenario !== (viewport.width < 500 ? "frontier" : "relic") || !result.scenarioSummaryVisible) {
+    throw new Error("Scenario selector did not apply or describe the selected scenario.");
+  }
+  if (result.researchables < 30) throw new Error("Expanded research deck did not load.");
+  if (result.events < 36) throw new Error("Expanded event deck did not load.");
   if (!result.allResearchHaveModifiers) throw new Error("Every research must declare at least one modifier.");
   if (!result.researchQueued || result.researchQueueButtons < 3) throw new Error("Research queue controls did not work.");
   if (result.shipBuilds < 7) throw new Error("Expanded ship builds did not load.");
@@ -441,6 +462,16 @@ async function runViewport(browser, viewport) {
   if (result.attackFleetButtons < 1 || !result.attackFleetOrderWorked) throw new Error("Fleet target attack controls did not work.");
   if (!result.autoAttackToggle || result.autoAttackLimitControls < 5 || !result.autoAttackCanStart) {
     throw new Error("Auto-attack controls did not render or assign a target.");
+  }
+  if (
+    !result.strategicRatings ||
+    result.strategicRatings.cohesion <= 0 ||
+    result.strategicRatings.logistics <= 0 ||
+    result.strategicRatings.security <= 0 ||
+    result.strategicProgramButtons < 4 ||
+    !result.programApplied
+  ) {
+    throw new Error("Strategic ratings or programs did not render/apply.");
   }
   if (!result.shipyardUiHiddenAway || !result.shipBuildBlockedWithoutShipyard) {
     throw new Error("Shipyard UI/builds are available without a shipyard.");

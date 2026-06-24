@@ -35,6 +35,8 @@ const els = {
   menuAiCount: document.getElementById("menuAiCount"),
   menuAiCountValue: document.getElementById("menuAiCountValue"),
   menuDifficulty: document.getElementById("menuDifficulty"),
+  menuScenario: document.getElementById("menuScenario"),
+  menuScenarioSummary: document.getElementById("menuScenarioSummary"),
   startMenuBtn: document.getElementById("startMenuBtn"),
   resumeMenuBtn: document.getElementById("resumeMenuBtn"),
 };
@@ -507,6 +509,89 @@ const TECH_LIBRARY = [
   },
 ];
 
+TECH_LIBRARY.push(
+  {
+    id: "sector-governance",
+    name: "Sector Governance Charters",
+    field: "Governance",
+    cost: 245,
+    text: "Regional governors gain clearer authority over frontier administration.",
+    effects: { cohesion: 0.12, sprawl: 0.12, influenceOutput: 0.06 },
+  },
+  {
+    id: "quantum-couriers",
+    name: "Quantum Courier Relays",
+    field: "Physics",
+    cost: 255,
+    text: "Courier relays improve command timing, research administration, and diplomacy.",
+    effects: { logistics: 0.1, researchAdmin: 0.08, diplomacyCost: -0.08 },
+  },
+  {
+    id: "sentinel-networks",
+    name: "Sentinel Detection Networks",
+    field: "Military",
+    cost: 270,
+    text: "Deep-space listening arrays improve internal security and pirate response.",
+    effects: { security: 0.16, pirateSuppression: 0.14, starbaseDefense: 1 },
+  },
+  {
+    id: "orbital-unions",
+    name: "Orbital Labor Unions",
+    field: "Society",
+    cost: 265,
+    text: "Recognized labor guilds improve cohesion and build discipline at some economic cost.",
+    effects: { cohesion: 0.1, stationBuildCost: -0.08, trade: -0.04 },
+  },
+  {
+    id: "adaptive-bureaucracy",
+    name: "Adaptive Bureaucracy",
+    field: "Governance",
+    cost: 310,
+    text: "Administrative models adapt as the empire expands.",
+    effects: { sprawl: 0.26, cohesion: 0.08, influence: 0.45 },
+  },
+  {
+    id: "distributed-shipwrights",
+    name: "Distributed Shipwrights",
+    field: "Engineering",
+    cost: 335,
+    text: "Standardized yard crews keep shipyards productive across distant systems.",
+    effects: { logistics: 0.16, shipBuildSpeed: 0.14, shipUpkeep: -0.04 },
+  },
+  {
+    id: "deep-space-tribunals",
+    name: "Deep-Space Tribunals",
+    field: "Governance",
+    cost: 290,
+    text: "Mobile courts stabilize frontier claims and reduce corruption.",
+    effects: { cohesion: 0.12, security: 0.08, diplomacyCost: -0.06 },
+  },
+  {
+    id: "gravitic-freight",
+    name: "Gravitic Freight Webs",
+    field: "Physics",
+    cost: 345,
+    text: "Freight webs improve logistics and make long-distance ship support easier.",
+    effects: { logistics: 0.18, shipSpeed: 0.08, trade: 0.1 },
+  },
+  {
+    id: "civilian-naval-reserve",
+    name: "Civilian Naval Reserve",
+    field: "Military",
+    cost: 330,
+    text: "Reserve crews improve fleet security and reduce wartime losses.",
+    effects: { security: 0.12, combatSurvival: 0.08, fleetMorale: 0.08 },
+  },
+  {
+    id: "xenoarchaeology-bureaus",
+    name: "Xenoarchaeology Bureaus",
+    field: "Society",
+    cost: 360,
+    text: "Dedicated bureaus turn anomalies into safer research and stronger unity narratives.",
+    effects: { anomalySafety: 0.18, researchAdmin: 0.1, unity: 0.08 },
+  }
+);
+
 const MODIFIER_LABELS = {
   stationEnergy: "energy station output",
   stationMinerals: "mining station output",
@@ -537,6 +622,9 @@ const MODIFIER_LABELS = {
   pirateSuppression: "pirate suppression",
   foundries: "foundry output",
   researchAdmin: "research administration",
+  cohesion: "cohesion rating",
+  logistics: "logistics rating",
+  security: "security rating",
 };
 
 const IDEOLOGIES = {
@@ -760,7 +848,109 @@ const AI_DIFFICULTIES = {
   admiral: { label: "Admiral", economy: 1.38, stockpile: 1.32, fleet: 1.24, expansion: 1.28, aggression: 0.16 },
 };
 
-const DEFAULT_GALAXY = { shape: "spiral", size: GALAXY_SIZE_LIMITS.default, aiCount: 4, difficulty: "standard" };
+const SCENARIOS = {
+  standard: {
+    label: "Commonwealth Dawn",
+    text: "Balanced start with a surveyed capital, one constructor, one science vessel, and standard rivals.",
+  },
+  frontier: {
+    label: "Frontier Rush",
+    text: "Extra survey capacity, faster early exploration, and richer starting stores, but frontier incidents arrive sooner.",
+    resources: { energy: 70, minerals: 85, alloys: 35, influence: 25, unity: 15 },
+    modifier: {
+      id: "scenario-frontier-charter",
+      label: "Frontier Charter",
+      duration: 30,
+      effects: { surveySpeed: 0.18, shipSpeed: 0.08, cohesion: -0.04 },
+      text: "+18% survey speed, +8% fleet speed, -4% cohesion",
+    },
+  },
+  siege: {
+    label: "Hostile Perimeter",
+    text: "Rivals begin closer, pirates stir early, and defense planning matters from month one.",
+    resources: { alloys: 70, influence: 10 },
+    modifier: {
+      id: "scenario-border-alert",
+      label: "Border Alert",
+      duration: 32,
+      effects: { starbaseDefense: 3, fleetMorale: 0.08, security: 0.08, diplomacyCost: 0.08 },
+      text: "+3 starbase defense, +8% fleet morale, +8% security, +8% diplomacy costs",
+    },
+  },
+  relic: {
+    label: "Relic Mandate",
+    text: "A mysterious archive accelerates research and anomaly work, but unity politics become strained.",
+    resources: { unity: 40, research: 45 },
+    modifier: {
+      id: "scenario-relic-archive",
+      label: "Relic Archive",
+      duration: 34,
+      effects: { researchAdmin: 0.15, anomalySafety: 0.15, unity: -0.05 },
+      text: "+15% research administration, safer anomalies, -5% unity output",
+    },
+  },
+  scarcity: {
+    label: "Lean Stars",
+    text: "Starting stores are thinner and expansion is more deliberate, but logistics discipline is stronger.",
+    resources: { energy: -85, minerals: -80, alloys: -45, influence: -25 },
+    modifier: {
+      id: "scenario-rationing-office",
+      label: "Rationing Office",
+      duration: 36,
+      effects: { stationBuildCost: -0.12, logistics: 0.12, growth: -0.06 },
+      text: "-12% station construction costs, +12% logistics, -6% growth",
+    },
+  },
+  crowded: {
+    label: "Crowded Arm",
+    text: "First contact arrives quickly, diplomacy is cheaper, and security risks rise in contested lanes.",
+    resources: { influence: 40, unity: 25 },
+    modifier: {
+      id: "scenario-diplomatic-corps",
+      label: "Diplomatic Corps",
+      duration: 30,
+      effects: { diplomacyCost: -0.16, trade: 0.12, security: -0.05 },
+      text: "-16% diplomacy costs, +0.12 trade income, -5% security",
+    },
+  },
+};
+
+const STRATEGIC_PROGRAMS = [
+  {
+    id: "program-frontier-survey",
+    label: "Frontier Survey Corps",
+    cost: { energy: 85, unity: 35 },
+    duration: 18,
+    effects: { surveySpeed: 0.2, anomalySafety: 0.08, cohesion: 0.04 },
+    text: "Science vessels survey faster, anomaly teams are safer, and frontier cohesion improves.",
+  },
+  {
+    id: "program-logistics",
+    label: "Logistics Overhaul",
+    cost: { minerals: 110, influence: 24 },
+    duration: 20,
+    effects: { logistics: 0.14, shipUpkeep: -0.05, stationBuildCost: -0.06 },
+    text: "Raises logistics, trims fleet upkeep, and makes orbital construction cheaper.",
+  },
+  {
+    id: "program-civil-defense",
+    label: "Civil Defense Drills",
+    cost: { alloys: 55, unity: 45 },
+    duration: 18,
+    effects: { security: 0.12, starbaseDefense: 2, pirateSuppression: 0.1 },
+    text: "Improves security, starbase defense, and pirate suppression.",
+  },
+  {
+    id: "program-market",
+    label: "Market Stimulation",
+    cost: { energy: 120, influence: 18 },
+    duration: 16,
+    effects: { trade: 0.24, cohesion: -0.03, influenceOutput: 0.04 },
+    text: "Boosts trade and influence output while slightly stressing cohesion.",
+  },
+];
+
+const DEFAULT_GALAXY = { shape: "spiral", size: GALAXY_SIZE_LIMITS.default, aiCount: 4, difficulty: "standard", scenario: "standard" };
 
 const BODY_COLORS = {
   Arid: "#c9955c",
@@ -1102,6 +1292,734 @@ const SPACE_EVENTS = [
   },
 ];
 
+SPACE_EVENTS.push(
+  {
+    id: "governor-summit",
+    title: "Governor Summit",
+    text: "Colonial governors gather to settle disputes over labor, charters, and frontier funding.",
+    options: [
+      {
+        label: "Back local councils",
+        text: "18 months: cohesion and unity improve.",
+        modifier: {
+          id: "governor-councils",
+          label: "Governor Councils",
+          duration: 18,
+          effects: { cohesion: 0.1, unity: 0.08 },
+          text: "+10% cohesion, +8% unity output",
+        },
+      },
+      {
+        label: "Centralize funding",
+        text: "16 months: influence improves and sprawl pressure eases.",
+        modifier: {
+          id: "central-funding",
+          label: "Central Funding Board",
+          duration: 16,
+          effects: { influence: 0.55, sprawl: 0.08 },
+          text: "+0.55 influence income, +8% sprawl efficiency",
+        },
+      },
+    ],
+  },
+  {
+    id: "relay-desync",
+    title: "Relay Desynchronization",
+    text: "A timing fault ripples through courier relays and forces the navy to revise signal discipline.",
+    options: [
+      {
+        label: "Rebuild timing tables",
+        text: "14 months: logistics improve.",
+        modifier: {
+          id: "relay-retiming",
+          label: "Relay Retiming",
+          duration: 14,
+          effects: { logistics: 0.12, shipSpeed: 0.05 },
+          text: "+12% logistics, +5% fleet speed",
+        },
+      },
+      {
+        label: "Audit command channels",
+        text: "14 months: security and cohesion improve.",
+        modifier: {
+          id: "channel-audits",
+          label: "Command Channel Audits",
+          duration: 14,
+          effects: { security: 0.1, cohesion: 0.04 },
+          text: "+10% security, +4% cohesion",
+        },
+      },
+    ],
+  },
+  {
+    id: "free-port-debate",
+    title: "Free Port Debate",
+    text: "Merchants petition for looser port rules while admirals warn that raiders exploit weak manifests.",
+    options: [
+      {
+        label: "Open free ports",
+        text: "18 months: trade rises while security dips.",
+        modifier: {
+          id: "free-port-charters",
+          label: "Free Port Charters",
+          duration: 18,
+          effects: { trade: 0.3, security: -0.06 },
+          text: "+0.30 trade income, -6% security",
+        },
+      },
+      {
+        label: "Mandate bonded cargo",
+        text: "16 months: security improves and diplomacy costs rise slightly.",
+        modifier: {
+          id: "bonded-cargo",
+          label: "Bonded Cargo Rules",
+          duration: 16,
+          effects: { security: 0.12, diplomacyCost: 0.04 },
+          text: "+12% security, +4% diplomacy costs",
+        },
+      },
+    ],
+  },
+  {
+    id: "shipyard-strike",
+    title: "Shipyard Strike",
+    text: "Orbital workers halt production after a wage dispute spreads through multiple drydocks.",
+    options: [
+      {
+        label: "Negotiate contracts",
+        text: "16 months: cohesion improves but ship builds slow.",
+        modifier: {
+          id: "yard-contracts",
+          label: "Shipyard Labor Contracts",
+          duration: 16,
+          effects: { cohesion: 0.08, shipBuildSpeed: -0.08 },
+          text: "+8% cohesion, -8% ship build speed",
+        },
+      },
+      {
+        label: "Automate urgent bays",
+        text: "14 months: ship builds accelerate but unity dips.",
+        modifier: {
+          id: "urgent-yard-automation",
+          label: "Urgent Yard Automation",
+          duration: 14,
+          effects: { shipBuildSpeed: 0.16, unity: -0.05 },
+          text: "+16% ship build speed, -5% unity output",
+        },
+      },
+    ],
+  },
+  {
+    id: "deep-scan-chorus",
+    title: "Deep Scan Chorus",
+    text: "Science crews detect overlapping sensor echoes that can refine charts or anomaly protocols.",
+    options: [
+      {
+        label: "Map the chorus",
+        text: "15 months: survey speed improves.",
+        modifier: {
+          id: "chorus-maps",
+          label: "Chorus Maps",
+          duration: 15,
+          effects: { surveySpeed: 0.2, logistics: 0.04 },
+          text: "+20% survey speed, +4% logistics",
+        },
+      },
+      {
+        label: "Study the echoes",
+        text: "15 months: research and anomaly safety improve.",
+        modifier: {
+          id: "echo-protocols",
+          label: "Echo Protocols",
+          duration: 15,
+          effects: { stationResearch: 0.16, anomalySafety: 0.1 },
+          text: "+16% research-station output, safer anomalies",
+        },
+      },
+    ],
+  },
+  {
+    id: "orbital-tax-dispute",
+    title: "Orbital Tax Dispute",
+    text: "Several trade habitats challenge Commonwealth tariffs in a public legal campaign.",
+    options: [
+      {
+        label: "Cut tariffs",
+        text: "16 months: trade and cohesion improve.",
+        modifier: {
+          id: "tariff-cuts",
+          label: "Tariff Cuts",
+          duration: 16,
+          effects: { trade: 0.18, cohesion: 0.06 },
+          text: "+0.18 trade income, +6% cohesion",
+        },
+      },
+      {
+        label: "Defend the levy",
+        text: "14 months: influence improves but cohesion falls.",
+        modifier: {
+          id: "tariff-defense",
+          label: "Tariff Defense",
+          duration: 14,
+          effects: { influence: 0.7, cohesion: -0.05 },
+          text: "+0.70 influence income, -5% cohesion",
+        },
+      },
+    ],
+  },
+  {
+    id: "academy-schism",
+    title: "Academy Schism",
+    text: "The naval academy splits over whether doctrine should favor carriers, screens, or rapid raids.",
+    options: [
+      {
+        label: "Favor fleet screens",
+        text: "16 months: combat survival improves.",
+        modifier: {
+          id: "screen-doctrine",
+          label: "Screen Doctrine",
+          duration: 16,
+          effects: { combatSurvival: 0.12, security: 0.04 },
+          text: "+12% combat survival, +4% security",
+        },
+      },
+      {
+        label: "Favor raiding drills",
+        text: "14 months: fleet morale and speed improve.",
+        modifier: {
+          id: "raiding-drills",
+          label: "Raiding Drills",
+          duration: 14,
+          effects: { fleetMorale: 0.12, shipSpeed: 0.08 },
+          text: "+12% fleet morale, +8% fleet speed",
+        },
+      },
+    ],
+  },
+  {
+    id: "hydroponic-blight",
+    title: "Hydroponic Blight",
+    text: "A fast-spreading blight threatens orbital grow beds and colony food reserves.",
+    options: [
+      {
+        label: "Fund gene repairs",
+        text: "18 months: growth and research improve.",
+        modifier: {
+          id: "gene-repairs",
+          label: "Gene Repair Labs",
+          duration: 18,
+          effects: { growth: 0.12, labs: 0.08 },
+          text: "+12% growth, +8% lab output",
+        },
+      },
+      {
+        label: "Ration reserves",
+        text: "14 months: cohesion and logistics improve while growth slows.",
+        modifier: {
+          id: "rationed-reserves",
+          label: "Rationed Reserves",
+          duration: 14,
+          effects: { cohesion: 0.08, logistics: 0.06, growth: -0.06 },
+          text: "+8% cohesion, +6% logistics, -6% growth",
+        },
+      },
+    ],
+  },
+  {
+    id: "mineral-cartel",
+    title: "Mineral Cartel",
+    text: "A cartel forms around extraction licenses and tries to manipulate frontier mineral prices.",
+    options: [
+      {
+        label: "Break the cartel",
+        text: "16 months: security improves and diplomacy costs rise.",
+        modifier: {
+          id: "cartel-crackdown",
+          label: "Cartel Crackdown",
+          duration: 16,
+          effects: { security: 0.1, diplomacyCost: 0.06 },
+          text: "+10% security, +6% diplomacy costs",
+        },
+      },
+      {
+        label: "Exploit the cartel",
+        text: "14 months: minerals rise but cohesion falls.",
+        modifier: {
+          id: "cartel-contracts",
+          label: "Cartel Contracts",
+          duration: 14,
+          effects: { stationMinerals: 0.22, cohesion: -0.06 },
+          text: "+22% mining-station minerals, -6% cohesion",
+        },
+      },
+    ],
+  },
+  {
+    id: "silent-observer",
+    title: "Silent Observer",
+    text: "An unidentified probe watches a surveyed system without broadcasting hostile intent.",
+    options: [
+      {
+        label: "Shadow it",
+        text: "15 months: security and research improve.",
+        modifier: {
+          id: "observer-shadow",
+          label: "Observer Shadowing",
+          duration: 15,
+          effects: { security: 0.08, stationResearch: 0.1 },
+          text: "+8% security, +10% research-station output",
+        },
+      },
+      {
+        label: "Broadcast openly",
+        text: "14 months: diplomacy and unity improve.",
+        modifier: {
+          id: "open-broadcast",
+          label: "Open Broadcast Policy",
+          duration: 14,
+          effects: { diplomacyCost: -0.08, unity: 0.06 },
+          text: "-8% diplomacy costs, +6% unity output",
+        },
+      },
+    ],
+  },
+  {
+    id: "blackout-week",
+    title: "Blackout Week",
+    text: "A cascade of station outages forces administrators to choose between grid discipline and public reassurance.",
+    options: [
+      {
+        label: "Harden the grid",
+        text: "16 months: energy and logistics improve.",
+        modifier: {
+          id: "grid-hardening",
+          label: "Grid Hardening",
+          duration: 16,
+          effects: { stationEnergy: 0.18, logistics: 0.08 },
+          text: "+18% energy-station output, +8% logistics",
+        },
+      },
+      {
+        label: "Public relief grants",
+        text: "14 months: cohesion improves while energy dips.",
+        modifier: {
+          id: "relief-grants",
+          label: "Blackout Relief Grants",
+          duration: 14,
+          effects: { cohesion: 0.1, stationEnergy: -0.06 },
+          text: "+10% cohesion, -6% energy-station output",
+        },
+      },
+    ],
+  },
+  {
+    id: "pilot-cults",
+    title: "Pilot Cults",
+    text: "A charismatic group of deep-space pilots becomes famous for reckless hyperlane runs.",
+    options: [
+      {
+        label: "Sponsor their charts",
+        text: "14 months: fleet speed and survey speed improve.",
+        modifier: {
+          id: "cult-charts",
+          label: "Pilot Cult Charts",
+          duration: 14,
+          effects: { shipSpeed: 0.1, surveySpeed: 0.1 },
+          text: "+10% fleet speed, +10% survey speed",
+        },
+      },
+      {
+        label: "Regulate their flights",
+        text: "14 months: security improves but speed dips.",
+        modifier: {
+          id: "flight-regulation",
+          label: "Flight Regulation",
+          duration: 14,
+          effects: { security: 0.1, shipSpeed: -0.04 },
+          text: "+10% security, -4% fleet speed",
+        },
+      },
+    ],
+  },
+  {
+    id: "foundry-innovation",
+    title: "Foundry Innovation",
+    text: "A young foundry consortium demonstrates cleaner zero-g smelting techniques.",
+    options: [
+      {
+        label: "License the process",
+        text: "18 months: foundry and mineral output improve.",
+        modifier: {
+          id: "clean-smelting",
+          label: "Clean Smelting Licenses",
+          duration: 18,
+          effects: { foundries: 0.14, stationMinerals: 0.08 },
+          text: "+14% foundry output, +8% mining-station minerals",
+        },
+      },
+      {
+        label: "Militarize production",
+        text: "15 months: alloys and shipbuilding improve.",
+        modifier: {
+          id: "military-smelting",
+          label: "Military Smelting Priority",
+          duration: 15,
+          effects: { foundries: 0.1, shipBuildSpeed: 0.1 },
+          text: "+10% foundry output, +10% ship build speed",
+        },
+      },
+    ],
+  },
+  {
+    id: "frontier-literature",
+    title: "Frontier Literature Boom",
+    text: "Stories from survey crews and settlers grip the public imagination.",
+    options: [
+      {
+        label: "Fund cultural archives",
+        text: "18 months: unity and cohesion improve.",
+        modifier: {
+          id: "frontier-archives",
+          label: "Frontier Archives",
+          duration: 18,
+          effects: { unity: 0.12, cohesion: 0.06 },
+          text: "+12% unity output, +6% cohesion",
+        },
+      },
+      {
+        label: "Recruit through the stories",
+        text: "15 months: survey speed and fleet morale improve.",
+        modifier: {
+          id: "story-recruitment",
+          label: "Story Recruitment",
+          duration: 15,
+          effects: { surveySpeed: 0.12, fleetMorale: 0.06 },
+          text: "+12% survey speed, +6% fleet morale",
+        },
+      },
+    ],
+  },
+  {
+    id: "subspace-smog",
+    title: "Subspace Smog",
+    text: "A noisy subspace layer muddles sensors and ship traffic along several lanes.",
+    options: [
+      {
+        label: "Tune civilian beacons",
+        text: "16 months: logistics improves but research stations slow.",
+        modifier: {
+          id: "beacon-retuning",
+          label: "Beacon Retuning",
+          duration: 16,
+          effects: { logistics: 0.1, stationResearch: -0.05 },
+          text: "+10% logistics, -5% research-station output",
+        },
+      },
+      {
+        label: "Study the smog",
+        text: "14 months: research improves while speed falls.",
+        modifier: {
+          id: "smog-study",
+          label: "Subspace Smog Study",
+          duration: 14,
+          effects: { stationResearch: 0.16, shipSpeed: -0.06 },
+          text: "+16% research-station output, -6% fleet speed",
+        },
+      },
+    ],
+  },
+  {
+    id: "starbase-whistleblowers",
+    title: "Starbase Whistleblowers",
+    text: "Dock officers expose waste in remote starbase supply contracts.",
+    options: [
+      {
+        label: "Protect the officers",
+        text: "15 months: cohesion and logistics improve.",
+        modifier: {
+          id: "protected-whistleblowers",
+          label: "Protected Whistleblowers",
+          duration: 15,
+          effects: { cohesion: 0.08, logistics: 0.08 },
+          text: "+8% cohesion, +8% logistics",
+        },
+      },
+      {
+        label: "Quietly restructure",
+        text: "15 months: logistics and diplomacy improve.",
+        modifier: {
+          id: "quiet-restructure",
+          label: "Quiet Restructure",
+          duration: 15,
+          effects: { logistics: 0.12, diplomacyCost: -0.04 },
+          text: "+12% logistics, -4% diplomacy costs",
+        },
+      },
+    ],
+  },
+  {
+    id: "colonial-sports",
+    title: "Colonial Games",
+    text: "Settled worlds propose a rotating festival to build common identity.",
+    options: [
+      {
+        label: "Sponsor the games",
+        text: "18 months: cohesion and unity improve.",
+        modifier: {
+          id: "colonial-games",
+          label: "Colonial Games",
+          duration: 18,
+          effects: { cohesion: 0.12, unity: 0.08 },
+          text: "+12% cohesion, +8% unity output",
+        },
+      },
+      {
+        label: "Tie them to trade fairs",
+        text: "16 months: trade and influence output improve.",
+        modifier: {
+          id: "games-trade-fairs",
+          label: "Games Trade Fairs",
+          duration: 16,
+          effects: { trade: 0.18, influenceOutput: 0.04 },
+          text: "+0.18 trade income, +4% influence output",
+        },
+      },
+    ],
+  },
+  {
+    id: "asteroid-monastery",
+    title: "Asteroid Monastery",
+    text: "A reclusive order asks for legal recognition in exchange for navigational archives.",
+    options: [
+      {
+        label: "Recognize the order",
+        text: "16 months: unity and survey speed improve.",
+        modifier: {
+          id: "recognized-order",
+          label: "Recognized Monastery",
+          duration: 16,
+          effects: { unity: 0.1, surveySpeed: 0.08 },
+          text: "+10% unity output, +8% survey speed",
+        },
+      },
+      {
+        label: "Buy their archives",
+        text: "14 months: logistics and research improve.",
+        modifier: {
+          id: "purchased-archives",
+          label: "Purchased Archives",
+          duration: 14,
+          effects: { logistics: 0.06, researchAdmin: 0.08 },
+          text: "+6% logistics, +8% research administration",
+        },
+      },
+    ],
+  },
+  {
+    id: "orbital-refugees",
+    title: "Orbital Refugees",
+    text: "A failing private habitat petitions for evacuation and settlement rights.",
+    options: [
+      {
+        label: "Open settlement lists",
+        text: "20 months: growth improves but logistics are strained.",
+        modifier: {
+          id: "refugee-settlement",
+          label: "Refugee Settlement Lists",
+          duration: 20,
+          effects: { growth: 0.18, logistics: -0.05 },
+          text: "+18% growth, -5% logistics",
+        },
+      },
+      {
+        label: "Recruit technical crews",
+        text: "16 months: logistics and labs improve.",
+        modifier: {
+          id: "refugee-technicians",
+          label: "Refugee Technicians",
+          duration: 16,
+          effects: { logistics: 0.08, labs: 0.08 },
+          text: "+8% logistics, +8% lab output",
+        },
+      },
+    ],
+  },
+  {
+    id: "diplomatic-leak",
+    title: "Diplomatic Leak",
+    text: "Private notes from envoy meetings spill onto public networks.",
+    options: [
+      {
+        label: "Publish the record",
+        text: "14 months: cohesion improves, diplomacy gets harder.",
+        modifier: {
+          id: "published-record",
+          label: "Published Diplomatic Record",
+          duration: 14,
+          effects: { cohesion: 0.08, diplomacyCost: 0.08 },
+          text: "+8% cohesion, +8% diplomacy costs",
+        },
+      },
+      {
+        label: "Rebuild envoy protocols",
+        text: "16 months: diplomacy and security improve.",
+        modifier: {
+          id: "envoy-protocols",
+          label: "Envoy Protocols",
+          duration: 16,
+          effects: { diplomacyCost: -0.1, security: 0.06 },
+          text: "-10% diplomacy costs, +6% security",
+        },
+      },
+    ],
+  },
+  {
+    id: "reactor-fashion",
+    title: "Reactor Fashion",
+    text: "A popular civilian reactor design spreads faster than regulators can inspect it.",
+    options: [
+      {
+        label: "Certify the design",
+        text: "16 months: energy and trade improve.",
+        modifier: {
+          id: "certified-reactors",
+          label: "Certified Civilian Reactors",
+          duration: 16,
+          effects: { stationEnergy: 0.14, trade: 0.08 },
+          text: "+14% energy-station output, +0.08 trade income",
+        },
+      },
+      {
+        label: "Slow inspections",
+        text: "14 months: security improves while trade dips.",
+        modifier: {
+          id: "reactor-inspections",
+          label: "Reactor Inspections",
+          duration: 14,
+          effects: { security: 0.08, trade: -0.04 },
+          text: "+8% security, -0.04 trade income",
+        },
+      },
+    ],
+  },
+  {
+    id: "voidborne-unions",
+    title: "Voidborne Union Drive",
+    text: "Ship crews organize across civilian and military yards.",
+    options: [
+      {
+        label: "Accept union charters",
+        text: "18 months: cohesion improves and ship upkeep rises.",
+        modifier: {
+          id: "union-charters",
+          label: "Voidborne Union Charters",
+          duration: 18,
+          effects: { cohesion: 0.12, shipUpkeep: 0.03 },
+          text: "+12% cohesion, +0.03 energy ship upkeep",
+        },
+      },
+      {
+        label: "Fund efficiency bonuses",
+        text: "15 months: logistics and shipbuilding improve.",
+        modifier: {
+          id: "efficiency-bonuses",
+          label: "Efficiency Bonuses",
+          duration: 15,
+          effects: { logistics: 0.08, shipBuildSpeed: 0.08 },
+          text: "+8% logistics, +8% ship build speed",
+        },
+      },
+    ],
+  },
+  {
+    id: "anomaly-celebrity",
+    title: "Anomaly Celebrity",
+    text: "A science officer becomes famous after a dramatic anomaly briefing.",
+    options: [
+      {
+        label: "Make them a public lecturer",
+        text: "16 months: unity and research administration improve.",
+        modifier: {
+          id: "public-lectures",
+          label: "Public Science Lectures",
+          duration: 16,
+          effects: { unity: 0.08, researchAdmin: 0.08 },
+          text: "+8% unity output, +8% research administration",
+        },
+      },
+      {
+        label: "Return them to fieldwork",
+        text: "14 months: anomaly safety and survey speed improve.",
+        modifier: {
+          id: "celebrity-fieldwork",
+          label: "Celebrity Fieldwork",
+          duration: 14,
+          effects: { anomalySafety: 0.14, surveySpeed: 0.1 },
+          text: "safer anomalies, +10% survey speed",
+        },
+      },
+    ],
+  },
+  {
+    id: "scrap-moon",
+    title: "Scrap Moon",
+    text: "Surveyors locate a small moon covered in derelict industrial machinery.",
+    options: [
+      {
+        label: "Strip the machinery",
+        text: "18 months: foundry and mineral output improve.",
+        modifier: {
+          id: "scrap-stripping",
+          label: "Scrap Moon Stripping",
+          duration: 18,
+          effects: { foundries: 0.12, stationMinerals: 0.12 },
+          text: "+12% foundry output, +12% mining-station minerals",
+        },
+      },
+      {
+        label: "Study the factories",
+        text: "16 months: research and station costs improve.",
+        modifier: {
+          id: "scrap-factory-study",
+          label: "Scrap Factory Study",
+          duration: 16,
+          effects: { researchAdmin: 0.08, stationBuildCost: -0.08 },
+          text: "+8% research administration, -8% station construction costs",
+        },
+      },
+    ],
+  },
+  {
+    id: "war-games-broadcast",
+    title: "War Games Broadcast",
+    text: "Fleet exercises become a public spectacle after tactical feeds leak to entertainment nets.",
+    options: [
+      {
+        label: "Lean into recruitment",
+        text: "16 months: fleet morale and unity improve.",
+        modifier: {
+          id: "broadcast-recruitment",
+          label: "Broadcast Recruitment",
+          duration: 16,
+          effects: { fleetMorale: 0.1, unity: 0.06 },
+          text: "+10% fleet morale, +6% unity output",
+        },
+      },
+      {
+        label: "Classify future drills",
+        text: "14 months: security and combat survival improve.",
+        modifier: {
+          id: "classified-drills",
+          label: "Classified Drills",
+          duration: 14,
+          effects: { security: 0.1, combatSurvival: 0.06 },
+          text: "+10% security, +6% combat survival",
+        },
+      },
+    ],
+  },
+);
+
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const fmt = (value) => Math.floor(value).toLocaleString("en-US");
 const oneDecimal = (value) => (Math.round(value * 10) / 10).toFixed(1);
@@ -1281,14 +2199,17 @@ function normalizeGalaxySettings(settings = {}) {
   const parsedAi = Number.parseInt(settings.aiCount, 10);
   const aiCount = clamp(Number.isFinite(parsedAi) ? parsedAi : DEFAULT_GALAXY.aiCount, 2, Math.min(50, Math.max(2, count - 1)));
   const difficulty = AI_DIFFICULTIES[settings.difficulty] ? settings.difficulty : DEFAULT_GALAXY.difficulty;
+  const scenario = SCENARIOS[settings.scenario] ? settings.scenario : DEFAULT_GALAXY.scenario;
   return {
     shape,
     size: count,
     aiCount,
     difficulty,
+    scenario,
     shapeLabel: GALAXY_SHAPES[shape].label,
     sizeLabel: `${count} Systems`,
     difficultyLabel: AI_DIFFICULTIES[difficulty].label,
+    scenarioLabel: SCENARIOS[scenario].label,
     ...galaxySizeSettings(count),
   };
 }
@@ -1382,6 +2303,9 @@ function newGame(seed = Date.now(), galaxySettings = DEFAULT_GALAXY, options = {
       pirateSuppression: 0,
       foundries: 0,
       researchAdmin: 0,
+      cohesion: 0,
+      logistics: 0,
+      security: 0,
     },
     unlocks: {
       frigate: false,
@@ -1441,8 +2365,9 @@ function newGame(seed = Date.now(), galaxySettings = DEFAULT_GALAXY, options = {
   generateGalaxy();
   state.tech.choices = drawTechChoices();
   chooseTech(state.tech.choices[0]?.id, true);
+  applyScenarioStart(galaxy.scenario);
   addLog(
-    `The Commonwealth Senate authorizes expansion into a ${galaxy.sizeLabel.toLowerCase()} ${galaxy.shapeLabel.toLowerCase()} galaxy against ${galaxy.difficultyLabel.toLowerCase()} rivals.`,
+    `The Commonwealth Senate authorizes ${galaxy.scenarioLabel} in a ${galaxy.sizeLabel.toLowerCase()} ${galaxy.shapeLabel.toLowerCase()} galaxy against ${galaxy.difficultyLabel.toLowerCase()} rivals.`,
     "major"
   );
   addLog("Science Vessel Meridian and Constructor Dauntless await orders.", "science");
@@ -1492,6 +2417,56 @@ function generateGalaxy() {
   createBackgroundStars();
   state.selectedSystemId = state.empires.player.homeSystemId;
   state.selectedBodyId = preferredBodyId(state.systems[state.selectedSystemId]);
+}
+
+function applyScenarioStart(scenarioId) {
+  const scenario = SCENARIOS[scenarioId] || SCENARIOS.standard;
+  for (const [resource, amount] of Object.entries(scenario.resources || {})) {
+    state.resources[resource] = Math.max(0, state.resources[resource] + amount);
+  }
+  if (scenario.modifier) addTimedModifier(scenario.modifier);
+
+  const homeId = state.empires.player.homeSystemId;
+  const home = state.systems[homeId];
+  if (scenarioId === "frontier") {
+    createCivilianFleet(homeId, "science", "Pathfinder", 1.28);
+    state.eventCooldown = 10;
+    addLog("A chartered Pathfinder science vessel joins the frontier survey corps.", "science");
+  }
+  if (scenarioId === "siege") {
+    state.pirateCooldown = 10;
+    state.eventCooldown = 12;
+    const closestRival = state.aiTemplates
+      .map((template) => ({ template, system: state.systems[state.empires[template.id].homeSystemId] }))
+      .filter((entry) => entry.system)
+      .sort((a, b) => systemDistance(home, a.system) - systemDistance(home, b.system))[0]?.template;
+    if (closestRival && state.contacts[closestRival.id]) {
+      state.contacts[closestRival.id].met = true;
+      state.contacts[closestRival.id].relation -= 26;
+      state.contacts[closestRival.id].playerClaims += 1;
+      addLog(`${state.empires[closestRival.id].name} begins the campaign already watching Commonwealth borders.`, "war");
+    }
+  }
+  if (scenarioId === "relic") {
+    for (const neighborId of home.hyperlanes.slice(0, 2)) state.systems[neighborId].known = true;
+    state.tech.progress += 40;
+    state.resources.research = state.tech.progress;
+    addLog("Relic charts reveal two nearby hyperspace signatures.", "science");
+  }
+  if (scenarioId === "scarcity") {
+    state.eventCooldown = 32;
+    home.deposits.minerals = Math.max(1, home.deposits.minerals - 1);
+    addLog("Lean-star rationing offices open on Aurelia Prime.", "major");
+  }
+  if (scenarioId === "crowded") {
+    state.eventCooldown = 8;
+    for (const template of state.aiTemplates.slice(0, 2)) {
+      if (!state.contacts[template.id]) continue;
+      state.contacts[template.id].met = true;
+      state.contacts[template.id].relation += 8;
+    }
+    addLog("Envoys report that nearby polities already know the Commonwealth by reputation.", "major");
+  }
 }
 
 function galaxyPoint(index, count) {
@@ -2057,6 +3032,9 @@ function modifierValueText(key, value) {
     "pirateSuppression",
     "foundries",
     "researchAdmin",
+    "cohesion",
+    "logistics",
+    "security",
   ]);
   const label = MODIFIER_LABELS[key] || key;
   if (key === "shipUpkeep") return `${value >= 0 ? "+" : ""}${value.toFixed(2)} energy ${label}`;
@@ -2089,6 +3067,22 @@ function commandSetIdeology(category, id) {
   state.ideologies[category] = id;
   applyModifierEffects(next.effects);
   addLog(`${next.label} adopted as ${category} doctrine.`, "major");
+  updateUI();
+}
+
+function commandEnactProgram(programId) {
+  const program = STRATEGIC_PROGRAMS.find((item) => item.id === programId);
+  if (!program) return;
+  if (isProgramActive(program.id)) return toast(`${program.label} is already active.`);
+  if (!canAfford(program.cost)) return toast(`${program.label} requirements are not met.`);
+  spend(program.cost);
+  addTimedModifier({
+    id: program.id,
+    label: program.label,
+    duration: program.duration,
+    effects: program.effects,
+    text: modifierEffectsText(program.effects),
+  });
   updateUI();
 }
 
@@ -2310,6 +3304,17 @@ function computeIncome(owner) {
     income.unity += colonies * state.modifiers.trade * 0.35;
   }
 
+  if (isPlayer) {
+    const ratings = getEmpireRatings(owner);
+    const cohesionEffect = clamp((ratings.cohesion - 82) / 520, -0.14, 0.14);
+    const logisticsEffect = clamp((ratings.logistics - 72) / 620, -0.1, 0.12);
+    const securityEffect = clamp((ratings.security - 70) / 700, -0.08, 0.1);
+    income.influence *= 1 + cohesionEffect * 0.7;
+    income.unity *= 1 + cohesionEffect;
+    income.alloys *= 1 + logisticsEffect;
+    income.energy += systems.length * securityEffect;
+  }
+
   const fleets = state.fleets.filter((fleet) => fleet.owner === owner);
   const upkeepMod = isPlayer ? state.modifiers.shipUpkeep : 0;
   for (const fleet of fleets) {
@@ -2346,6 +3351,28 @@ function getEmpireSprawl(owner) {
   const owned = state.systems.filter((system) => system.owner === owner).length;
   const colonies = state.systems.filter((system) => system.colony?.owner === owner).length;
   return owned * 2 + colonies * 6;
+}
+
+function getEmpireRatings(owner) {
+  const systems = state.systems.filter((system) => system.owner === owner);
+  const colonies = systems.filter((system) => system.colony?.owner === owner);
+  const shipyards = systems.filter((system) => system.stations.shipyard).length;
+  const starbases = systems.filter((system) => system.starbase?.owner === owner).length;
+  const fleets = state.fleets.filter((fleet) => fleet.owner === owner);
+  const navyShips = fleets.filter((fleet) => fleet.role === "navy").reduce((sum, fleet) => sum + fleet.ships, 0);
+  const fleetPower = fleets.filter((fleet) => fleet.role === "navy").reduce((sum, fleet) => sum + fleet.strength, 0);
+  const frontier = systems.filter((system) => system.hyperlanes.some((neighborId) => state.systems[neighborId].owner !== owner)).length;
+  const sprawl = getEmpireSprawl(owner);
+  const playerMod = owner === "player" ? state.modifiers : { cohesion: 0, logistics: 0, security: 0, pirateSuppression: 0, starbaseDefense: 0 };
+  return {
+    cohesion: Math.round(clamp(92 + colonies.length * 3 - Math.max(0, sprawl - 38) * 0.45 + (playerMod.cohesion || 0) * 100, 20, 140)),
+    logistics: Math.round(
+      clamp(44 + systems.length * 1.7 + shipyards * 17 + starbases * 7 - navyShips * 1.3 + (playerMod.logistics || 0) * 100, 10, 150)
+    ),
+    security: Math.round(
+      clamp(42 + fleetPower * 0.85 + starbases * (6 + (playerMod.starbaseDefense || 0)) - frontier * 1.8 + (playerMod.security || 0) * 100 + (playerMod.pirateSuppression || 0) * 60, 10, 160)
+    ),
+  };
 }
 
 function getHabitability(system) {
@@ -4054,12 +5081,14 @@ function syncMenuControls() {
   els.menuSeed.value = String(state.seed || randomSeed());
   els.menuAiCount.value = String(state.galaxy?.aiCount || DEFAULT_GALAXY.aiCount);
   els.menuDifficulty.value = state.galaxy?.difficulty || DEFAULT_GALAXY.difficulty;
+  els.menuScenario.value = state.galaxy?.scenario || DEFAULT_GALAXY.scenario;
   updateMenuRangeLabels();
 }
 
 function updateMenuRangeLabels() {
   if (els.menuSizeValue) els.menuSizeValue.textContent = String(els.menuSize.value);
   if (els.menuAiCountValue) els.menuAiCountValue.textContent = String(els.menuAiCount.value);
+  if (els.menuScenarioSummary) els.menuScenarioSummary.textContent = SCENARIOS[els.menuScenario.value]?.text || SCENARIOS.standard.text;
 }
 
 function readMenuSettings() {
@@ -4073,6 +5102,7 @@ function readMenuSettings() {
       size: Number.isFinite(parsedSize) ? parsedSize : DEFAULT_GALAXY.size,
       aiCount: Number.isFinite(parsedAiCount) ? parsedAiCount : DEFAULT_GALAXY.aiCount,
       difficulty: els.menuDifficulty.value,
+      scenario: els.menuScenario.value,
     },
   };
 }
@@ -4188,6 +5218,7 @@ function renderEmpirePanel() {
     .filter((system) => system.colony?.owner === "player")
     .reduce((sum, system) => sum + system.colony.pops, 0);
   const sprawl = getEmpireSprawl("player");
+  const ratings = getEmpireRatings("player");
   const victory = Math.max(systems / 34, colonies / 8);
   const home = state.systems[state.empires.player.homeSystemId];
   const queue = state.buildQueue.slice(0, 5);
@@ -4199,10 +5230,18 @@ function renderEmpirePanel() {
       ${stat("Pops", pops)}
       ${stat("Sprawl", sprawl)}
     </div>
+    <div class="subhead">Strategic Systems</div>
+    <div class="stat-grid strategic-grid">
+      ${stat("Cohesion", ratings.cohesion)}
+      ${stat("Logistics", ratings.logistics)}
+      ${stat("Security", ratings.security)}
+    </div>
+    <div class="small-note" style="margin-top:7px">Cohesion shapes unity and influence, logistics shapes alloy throughput, and security protects trade income.</div>
     <div class="subhead">Ascendancy</div>
     <div class="meter" title="Victory progress"><span style="width:${clamp(victory * 100, 4, 100)}%"></span></div>
     <div class="small-note" style="margin-top:7px">Control 34 systems, settle 8 colonies, or take every rival capital.</div>
     ${renderActiveModifiers()}
+    ${renderStrategicPrograms()}
     <div class="subhead">Queue</div>
     <div class="queue-list">
       ${
@@ -4249,6 +5288,38 @@ function renderActiveModifiers() {
         .join("")}
     </div>
   `;
+}
+
+function renderStrategicPrograms() {
+  return `
+    <div class="subhead">Strategic Programs</div>
+    <div class="choice-list strategic-program-list">
+      ${STRATEGIC_PROGRAMS.map((program) => {
+        const active = isProgramActive(program.id);
+        const disabled = active || !canAfford(program.cost);
+        const title = active
+          ? `${program.label} is already active. ${program.text}`
+          : `Enact ${program.label}. Cost: ${costText(program.cost)}. ${program.duration} months. ${program.text} Modifiers: ${modifierEffectsText(program.effects)}.`;
+        return `
+          <button
+            class="choice-button ${active ? "is-active" : ""}"
+            data-action="enact-program"
+            data-program="${program.id}"
+            ${disabled ? "disabled" : ""}
+            title="${escapeHtml(title)}"
+          >
+            <span class="choice-title">${escapeHtml(program.label)}</span>
+            <span class="choice-text">${escapeHtml(program.text)}</span>
+            <span class="choice-text">${escapeHtml(costText(program.cost))} - ${program.duration} months</span>
+          </button>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function isProgramActive(programId) {
+  return state.timedModifiers.some((modifier) => modifier.id.startsWith(`${programId}-`));
 }
 
 function stat(label, value) {
@@ -6274,6 +7345,7 @@ function handleAction(action, target) {
   if (action === "attack-system") return commandAttack(Number(data.system));
   if (action === "attack-fleet") return commandAttackFleet(data.targetFleet);
   if (action === "set-ideology") return commandSetIdeology(data.category, data.ideology);
+  if (action === "enact-program") return commandEnactProgram(data.program);
   if (action === "choose-tech") return chooseTech(data.tech);
   if (action === "remove-tech") return commandRemoveQueuedResearch(data.tech);
   if (action === "embassy") return improveRelations(data.empire);
@@ -6294,6 +7366,7 @@ function bindEvents() {
   });
   els.menuSize.addEventListener("input", updateMenuRangeLabels);
   els.menuAiCount.addEventListener("input", updateMenuRangeLabels);
+  els.menuScenario.addEventListener("change", updateMenuRangeLabels);
 
   document.addEventListener("click", (event) => {
     const decision = event.target.closest("[data-decision]");
