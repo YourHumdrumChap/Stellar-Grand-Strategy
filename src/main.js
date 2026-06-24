@@ -13,6 +13,8 @@ const els = {
   empirePanel: document.getElementById("empirePanel"),
   fleetPanel: document.getElementById("fleetPanel"),
   researchPanel: document.getElementById("researchPanel"),
+  politicalPanel: document.getElementById("politicalPanel"),
+  economicPanel: document.getElementById("economicPanel"),
   inspectorPanel: document.getElementById("inspectorPanel"),
   selectedTag: document.getElementById("selectedTag"),
   diplomacyPanel: document.getElementById("diplomacyPanel"),
@@ -659,6 +661,7 @@ const INFRASTRUCTURE_META = {
   colonyMission: { label: "Colony mission", color: "#ad8cff" },
   miningStation: { label: "Mining station", color: "#9bd389" },
   researchStation: { label: "Research station", color: "#4fd1d8" },
+  shipyard: { label: "Shipyard", color: "#d7c36a" },
   generator: { label: "Generator district", color: "#f2b84b" },
   mining: { label: "Mining district", color: "#9bd389" },
   lab: { label: "Lab district", color: "#4fd1d8" },
@@ -671,12 +674,33 @@ const INFRASTRUCTURE_META = {
 };
 
 const SHIP_BUILDS = {
+  scienceVessel: {
+    label: "Science Vessel",
+    cost: { alloys: 95, energy: 35, unity: 20 },
+    months: 5,
+    strength: 0,
+    ships: 1,
+    role: "science",
+    speed: 1.25,
+    requires: null,
+  },
+  constructor: {
+    label: "Constructor",
+    cost: { alloys: 115, energy: 40, minerals: 75 },
+    months: 6,
+    strength: 0,
+    ships: 1,
+    role: "constructor",
+    speed: 1.0,
+    requires: null,
+  },
   corvette: {
     label: "Corvette",
     cost: { alloys: 105, energy: 25 },
     months: 4,
     strength: 5,
     ships: 1,
+    role: "navy",
     requires: null,
   },
   frigate: {
@@ -685,6 +709,7 @@ const SHIP_BUILDS = {
     months: 6,
     strength: 8,
     ships: 1,
+    role: "navy",
     requires: "frigate",
   },
   destroyer: {
@@ -693,6 +718,7 @@ const SHIP_BUILDS = {
     months: 7,
     strength: 12,
     ships: 1,
+    role: "navy",
     requires: "destroyer",
   },
   cruiser: {
@@ -701,6 +727,7 @@ const SHIP_BUILDS = {
     months: 11,
     strength: 24,
     ships: 1,
+    role: "navy",
     requires: "cruiser",
   },
   carrier: {
@@ -709,6 +736,7 @@ const SHIP_BUILDS = {
     months: 15,
     strength: 42,
     ships: 1,
+    role: "navy",
     requires: "carrier",
   },
 };
@@ -1296,9 +1324,12 @@ function newGame(seed = Date.now(), galaxySettings = DEFAULT_GALAXY, options = {
     month: 0,
     autoTimer: 0,
     mapMode: "political",
+    leftMenu: "empire",
+    rightMenu: "system",
     selectedSystemId: null,
     selectedBodyId: null,
     selectedFleetId: "fleet-home",
+    selectedAttackFleetId: null,
     camera: { x: 0, y: 0, zoom: 0.46 },
     systems: [],
     fleets: [],
@@ -1642,7 +1673,7 @@ function createSystem(id, name, x, y, isHome) {
     colony: null,
     owner: null,
     starbase: null,
-    stations: { mining: false, research: false },
+    stations: { mining: false, research: false, shipyard: false },
     surveyedBy: {},
     known: false,
     hyperlanes: [],
@@ -1773,6 +1804,7 @@ function assignHomeworlds() {
   playerHome.planet.name = "Aurelia Prime";
   playerHome.bodies = createSystemBodies(playerHome.name, playerHome.star, playerHome.planet, playerHome.deposits, true);
   claimSystem(playerHome.id, "player", { home: true, reveal: true });
+  playerHome.stations.shipyard = true;
   playerHome.colony = createColony("player", playerHome.planet, true);
   state.empires.player.homeSystemId = playerHome.id;
 
@@ -1849,6 +1881,19 @@ function createAutoSurveySettings() {
   };
 }
 
+function createAutoAttackSettings() {
+  return {
+    enabled: false,
+    limits: {
+      pirates: true,
+      warEnemies: true,
+      weakerOnly: true,
+      avoidStarbases: false,
+      localRange: false,
+    },
+  };
+}
+
 function createFleets() {
   const home = state.empires.player.homeSystemId;
   state.fleets.push({
@@ -1899,6 +1944,7 @@ function createFleets() {
     maxStrength: 14,
     ships: 3,
     speed: 1.05,
+    autoAttack: createAutoAttackSettings(),
   });
 
   for (const template of state.aiTemplates) {
@@ -1921,6 +1967,7 @@ function createFleets() {
       maxStrength: strength,
       ships: 4,
       speed: 1.0,
+      autoAttack: createAutoAttackSettings(),
     });
   }
 }
@@ -2148,6 +2195,7 @@ function commandQueueResearch(id, silent = false) {
   if (!tech || state.tech.known.includes(id) || state.tech.active?.id === id || state.tech.queue.includes(id)) return;
   state.tech.queue.push(id);
   state.tech.choices = drawTechChoices();
+  state.leftMenu = "research";
   if (!silent) addLog(`Research queued: ${tech.name}.`, "science");
   updateUI();
 }
@@ -2157,6 +2205,7 @@ function commandRemoveQueuedResearch(id) {
   state.tech.queue = state.tech.queue.filter((techId) => techId !== id);
   if (state.tech.queue.length !== before) {
     state.tech.choices = drawTechChoices();
+    state.leftMenu = "research";
     updateUI();
   }
 }
@@ -2181,6 +2230,7 @@ function tickMonth() {
   processBuildQueue();
   updateFleets();
   processAutoSurvey();
+  processAutoAttack();
   processFleetRepairs();
   processAI();
   updateKnownFromBorders();
@@ -2332,6 +2382,10 @@ function completeBuild(item) {
   const system = state.systems[item.systemId];
   if (item.type === "planet") {
     if (!system?.colony || system.colony.owner !== item.owner) return;
+    if ((system.colony.buildings[item.building] || 0) >= buildingTypeLimit(system, item.building) || colonyBuildingCount(system) >= colonyBuildingLimit(system)) {
+      addLog(`${PLANET_BUILDS[item.building].label} project pauses at ${system.colony.name}; building slots are full.`);
+      return;
+    }
     system.colony.buildings[item.building] += 1;
     addLog(`${PLANET_BUILDS[item.building].label} district completed on ${system.colony.name}.`);
   }
@@ -2341,6 +2395,11 @@ function completeBuild(item) {
     addLog(`${system.planet.name} is now a Commonwealth colony.`, "major");
   }
   if (item.type === "ship") {
+    if (item.role && item.role !== "navy") {
+      const fleet = createCivilianFleet(item.systemId, item.role, item.label, item.speed);
+      addLog(`${fleet.name} launches from ${system.name}.`);
+      return;
+    }
     const fleet = getOrCreateShipyardFleet(item.systemId);
     const strength = item.strength * (1 + state.modifiers.fleetPower);
     fleet.strength += strength;
@@ -2372,26 +2431,112 @@ function getOrCreateShipyardFleet(systemId) {
     maxStrength: 0,
     ships: 0,
     speed: 1.05,
+    autoAttack: createAutoAttackSettings(),
   };
   state.fleets.push(fleet);
   return fleet;
 }
 
+function createCivilianFleet(systemId, role, label, speed) {
+  const prefix = role === "science" ? "sci" : "con";
+  const name = uniqueFleetName(label || (role === "science" ? "Science Vessel" : "Constructor"));
+  const fleet = {
+    id: `${prefix}-${state.month}-${state.fleets.length}`,
+    name,
+    owner: "player",
+    role,
+    location: systemId,
+    route: [],
+    progress: 0,
+    segmentMonths: 1,
+    order: "idle",
+    target: null,
+    strength: 0,
+    maxStrength: 0,
+    ships: 1,
+    speed: speed || (role === "science" ? 1.25 : 1.0),
+  };
+  if (role === "science") fleet.autoSurvey = createAutoSurveySettings();
+  state.fleets.push(fleet);
+  return fleet;
+}
+
+function uniqueFleetName(base) {
+  const used = new Set(state.fleets.filter((fleet) => fleet.owner === "player").map((fleet) => fleet.name));
+  if (!used.has(base)) return base;
+  for (let index = 2; index < 100; index += 1) {
+    const candidate = `${base} ${index}`;
+    if (!used.has(candidate)) return candidate;
+  }
+  return `${base} ${state.fleets.length + 1}`;
+}
+
 function updateFleets() {
   for (const fleet of state.fleets) {
-    if (!fleet.route.length) continue;
-    fleet.progress += fleet.speed * (1 + (fleet.owner === "player" ? state.modifiers.shipSpeed : 0));
-    if (fleet.role === "science" && fleet.owner === "player") fleet.progress += state.modifiers.surveySpeed;
-    while (fleet.route.length && fleet.progress >= fleet.segmentMonths) {
-      fleet.progress -= fleet.segmentMonths;
-      fleet.location = fleet.route.shift();
-      if (fleet.route.length) {
-        fleet.segmentMonths = segmentTime(fleet.location, fleet.route[0], fleet);
-      } else {
-        fleet.progress = 0;
-        finishFleetOrder(fleet);
+    if (fleet.route.length) {
+      fleet.progress += fleet.speed * (1 + (fleet.owner === "player" ? state.modifiers.shipSpeed : 0));
+      if (fleet.role === "science" && fleet.owner === "player") fleet.progress += state.modifiers.surveySpeed;
+      while (fleet.route.length && fleet.progress >= fleet.segmentMonths) {
+        fleet.progress -= fleet.segmentMonths;
+        fleet.location = fleet.route.shift();
+        if (fleet.route.length) {
+          fleet.segmentMonths = segmentTime(fleet.location, fleet.route[0], fleet);
+        } else {
+          fleet.progress = 0;
+          if (orderRequiresOnSiteWork(fleet.order)) {
+            startFleetWork(fleet);
+          } else {
+            finishFleetOrder(fleet);
+          }
+        }
       }
+      continue;
     }
+
+    if (orderRequiresOnSiteWork(fleet.order) && fleet.target === fleet.location) {
+      advanceFleetWork(fleet);
+    }
+  }
+}
+
+function orderRequiresOnSiteWork(order) {
+  return ["survey", "build-outpost", "build-mining", "build-research", "build-shipyard"].includes(order);
+}
+
+function orderWorkMonths(order) {
+  return (
+    {
+      survey: 5,
+      "build-outpost": 6,
+      "build-mining": 4,
+      "build-research": 4,
+      "build-shipyard": 8,
+    }[order] || 0
+  );
+}
+
+function startFleetWork(fleet) {
+  const target = state.systems[fleet.target ?? fleet.location];
+  if (!target) return finishFleetOrder(fleet);
+  fleet.location = target.id;
+  fleet.route = [];
+  fleet.progress = 0;
+  fleet.workProgress = 0;
+  fleet.workTotal = orderWorkMonths(fleet.order);
+}
+
+function clearFleetWork(fleet) {
+  fleet.workProgress = 0;
+  fleet.workTotal = 0;
+}
+
+function advanceFleetWork(fleet) {
+  if (!fleet.workTotal) startFleetWork(fleet);
+  if (!fleet.workTotal) return;
+  const rate = fleet.order === "survey" && fleet.owner === "player" ? 1 + state.modifiers.surveySpeed : 1;
+  fleet.workProgress += Math.max(0.25, rate);
+  if (fleet.workProgress >= fleet.workTotal) {
+    finishFleetOrder(fleet);
   }
 }
 
@@ -2437,11 +2582,13 @@ function chooseAutoSurveyTarget(fleet) {
     const route = routeBetween(fleet.location, system.id, "player");
     if (!route) continue;
     if (settings.limits.localRange && route.length > 4) continue;
+    const capitalBand = capitalJumpDistance(system);
     candidates.push({
       system,
       route,
       score:
-        (route.length - 1) * 1000 +
+        capitalBand * 10000 +
+        (route.length - 1) * 900 +
         systemDistance(state.systems[fleet.location], system) +
         (system.danger || 0) * 18 -
         (adjacentToPlayer(system) ? 80 : 0),
@@ -2463,6 +2610,77 @@ function canAutoSurveyTarget(system, fleet, settings, activeSurveyTargets = new 
   return true;
 }
 
+function processAutoAttack() {
+  for (const fleet of state.fleets) {
+    if (fleet.owner !== "player" || fleet.role !== "navy" || fleet.order !== "idle" || fleet.route.length) continue;
+    if (!getAutoAttackSettings(fleet).enabled) continue;
+    assignAutoAttackTarget(fleet);
+  }
+}
+
+function getAutoAttackSettings(fleet) {
+  if (!fleet.autoAttack) fleet.autoAttack = createAutoAttackSettings();
+  fleet.autoAttack.limits = { ...createAutoAttackSettings().limits, ...(fleet.autoAttack.limits || {}) };
+  return fleet.autoAttack;
+}
+
+function assignAutoAttackTarget(fleet, notifyEmpty = false) {
+  const target = chooseAutoAttackTarget(fleet);
+  if (!target) {
+    if (notifyEmpty) toast("No auto-attack target matches those constraints.");
+    return false;
+  }
+  if (setFleetCourse(fleet, target.system.id, target.order)) {
+    fleet.attackTargetFleetId = target.targetFleet?.id || null;
+    addLog(`${fleet.name} auto-attacks ${target.label}.`, "war");
+    return true;
+  }
+  return false;
+}
+
+function chooseAutoAttackTarget(fleet) {
+  if (!fleet || fleet.owner !== "player" || fleet.role !== "navy") return null;
+  const settings = getAutoAttackSettings(fleet);
+  const candidates = [];
+  for (const system of state.systems) {
+    const target = autoAttackTargetForSystem(system, fleet, settings);
+    if (!target) continue;
+    const route = routeBetween(fleet.location, system.id, "player");
+    if (!route) continue;
+    if (settings.limits.localRange && route.length > 4) continue;
+    const capitalBand = capitalJumpDistance(system);
+    candidates.push({
+      ...target,
+      route,
+      score:
+        (route.length - 1) * 900 +
+        capitalBand * 120 +
+        target.power * 8 +
+        (system.owner ? 180 : 0) -
+        (system.owner === "pirates" ? 120 : 0),
+    });
+  }
+  return candidates.sort((a, b) => a.score - b.score)[0] || null;
+}
+
+function autoAttackTargetForSystem(system, fleet, settings) {
+  if (!system || (!system.known && !system.surveyedBy.player && system.owner !== "player")) return null;
+  const limits = settings.limits;
+  const pirates = state.fleets.filter((item) => item.owner === "pirates" && item.location === system.id && item.role === "navy");
+  if (limits.pirates && pirates.length) {
+    const power = pirates.reduce((sum, item) => sum + fleetCombatPower(item), 0);
+    if (!limits.weakerOnly || power <= fleetCombatPower(fleet) * 1.08) {
+      return { system, order: "hunt-pirates", targetFleet: pirates[0], power, label: `raiders at ${system.name}` };
+    }
+  }
+  if (!limits.warEnemies || !system.owner || system.owner === "player" || !state.contacts[system.owner]?.war) return null;
+  if (limits.avoidStarbases && system.starbase?.owner === system.owner) return null;
+  const power = getSystemDefense(system, system.owner);
+  if (limits.weakerOnly && power > fleetCombatPower(fleet) * 1.08) return null;
+  const targetFleet = hostileFleetsAt(system, fleet.owner)[0] || null;
+  return { system, order: "attack", targetFleet, power, label: `${state.empires[system.owner].name} forces at ${system.name}` };
+}
+
 function processFleetRepairs() {
   for (const fleet of state.fleets) {
     if (fleet.role !== "navy" || fleet.route.length || fleet.strength >= fleet.maxStrength) continue;
@@ -2481,6 +2699,7 @@ function finishFleetOrder(fleet) {
   const order = fleet.order;
   fleet.order = "idle";
   fleet.target = null;
+  clearFleetWork(fleet);
 
   if (!target) return;
 
@@ -2488,10 +2707,12 @@ function finishFleetOrder(fleet) {
   if (order === "build-outpost") finishOutpost(target);
   if (order === "build-mining") finishStation(target, "mining");
   if (order === "build-research") finishStation(target, "research");
+  if (order === "build-shipyard") finishStation(target, "shipyard");
   if (order === "attack") resolvePlayerAttack(fleet, target);
   if (order === "hunt-pirates") resolvePirateHunt(fleet, target);
   if (order === "ai-attack") resolveAIAttack(fleet, target);
   if (order === "move" && fleet.owner === "player") addLog(`${fleet.name} arrives in ${target.name}.`);
+  fleet.attackTargetFleetId = null;
 }
 
 function finishSurvey(fleet, system) {
@@ -2596,7 +2817,8 @@ function finishOutpost(system) {
 function finishStation(system, kind) {
   if (system.owner !== "player" || system.stations[kind]) return;
   system.stations[kind] = true;
-  addLog(`${kind === "mining" ? "Mining" : "Research"} station online in ${system.name}.`);
+  const label = kind === "mining" ? "Mining station" : kind === "shipyard" ? "Shipyard" : "Research station";
+  addLog(`${label} online in ${system.name}.`);
 }
 
 function segmentTime(fromId, toId, fleet) {
@@ -2611,12 +2833,17 @@ function setFleetCourse(fleet, targetId, order) {
     toast("No known route.");
     return false;
   }
+  clearFleetWork(fleet);
   if (route.length < 2) {
     fleet.route = [];
     fleet.target = targetId;
     fleet.order = order;
     fleet.progress = 0;
-    finishFleetOrder(fleet);
+    if (orderRequiresOnSiteWork(order)) {
+      startFleetWork(fleet);
+    } else {
+      finishFleetOrder(fleet);
+    }
     return true;
   }
   fleet.route = route.slice(1);
@@ -3018,6 +3245,7 @@ function selectSystem(systemId, center = true) {
   if (!system) return;
   state.selectedSystemId = system.id;
   state.selectedBodyId = preferredBodyId(system);
+  state.rightMenu = "system";
   if (center) {
     state.camera.x = system.x;
     state.camera.y = system.y;
@@ -3047,11 +3275,12 @@ function canSurvey(system, fleet = selectedFleet()) {
 }
 
 function canBuildOutpost(system, fleet = selectedFleet()) {
-  const cost = getOutpostCost();
+  const cost = getOutpostCost(system);
   return Boolean(
-    system &&
+      system &&
       system.surveyedBy.player &&
       !system.owner &&
+      !fleetOrderForSystem(system, "build-outpost") &&
       adjacentToPlayer(system) &&
       fleet &&
       fleet.owner === "player" &&
@@ -3062,17 +3291,34 @@ function canBuildOutpost(system, fleet = selectedFleet()) {
   );
 }
 
-function getOutpostCost() {
-  return scaledCost({ influence: 64, alloys: 95 }, 1 + state.modifiers.outpostCost);
+function getOutpostCost(system = selectedSystem()) {
+  return distanceScaledInfluenceCost({ influence: 64, alloys: 95 }, 1 + state.modifiers.outpostCost, system, 18);
 }
 
 function getStationCost(kind) {
-  const base = kind === "mining" ? { minerals: 96 } : { minerals: 118 };
+  const base = kind === "mining" ? { minerals: 96 } : kind === "shipyard" ? { minerals: 240, alloys: 125, influence: 35 } : { minerals: 118 };
   return scaledCost(base, 1 + state.modifiers.stationBuildCost);
 }
 
-function getColonizeCost() {
-  return scaledCost({ energy: 125, minerals: 210, influence: 42 }, 1 + state.modifiers.colonyCost);
+function getColonizeCost(system = selectedSystem()) {
+  return distanceScaledInfluenceCost({ energy: 125, minerals: 210, influence: 42 }, 1 + state.modifiers.colonyCost, system, 10);
+}
+
+function distanceScaledInfluenceCost(cost, modifier, system, influencePerJump) {
+  const scaled = scaledCost(cost, modifier);
+  if (!system || !scaled.influence) return scaled;
+  const extraJumps = Math.max(0, capitalJumpDistance(system) - 1);
+  scaled.influence += Math.round(extraJumps * influencePerJump);
+  return scaled;
+}
+
+function capitalJumpDistance(system) {
+  if (!system) return 0;
+  const capital = state.systems[state.empires.player.homeSystemId];
+  if (!capital) return 0;
+  const route = routeBetween(capital.id, system.id, "player");
+  if (route) return Math.max(0, route.length - 1);
+  return Math.max(1, Math.round(systemDistance(capital, system) / 420));
 }
 
 function getShipBuildMonths(ship) {
@@ -3096,6 +3342,40 @@ function requirementLabel(key) {
   return labels[key] || "Requires research";
 }
 
+function colonyBuildingLimit(system) {
+  return clamp(Math.round(system?.planet?.size || 12), 4, 24);
+}
+
+function colonyBuildingCount(system) {
+  if (!system?.colony) return 0;
+  return Object.values(system.colony.buildings).reduce((sum, count) => sum + count, 0);
+}
+
+function queuedPlanetBuildCount(system, building = null) {
+  return state.buildQueue.filter(
+    (item) =>
+      item.type === "planet" &&
+      item.systemId === system?.id &&
+      item.owner === "player" &&
+      (!building || item.building === building)
+  ).length;
+}
+
+function buildingTypeLimit(system, building) {
+  const baseline = buildingBenchmark(system);
+  if (building === "city" || building === "bureau") return Math.max(2, baseline + 1);
+  return baseline;
+}
+
+function canBuildPlanet(system, building) {
+  const build = PLANET_BUILDS[building];
+  if (!system?.colony || system.colony.owner !== "player" || !build || isBuildLocked(build) || !canAfford(build.cost)) return false;
+  const totalAfterQueue = colonyBuildingCount(system) + queuedPlanetBuildCount(system);
+  if (totalAfterQueue >= colonyBuildingLimit(system)) return false;
+  const typeAfterQueue = (system.colony.buildings[building] || 0) + queuedPlanetBuildCount(system, building);
+  return typeAfterQueue < buildingTypeLimit(system, building);
+}
+
 function adjacentToPlayer(system) {
   return system.hyperlanes.some((id) => state.systems[id].owner === "player");
 }
@@ -3113,7 +3393,7 @@ function commandSurvey(systemId) {
 function commandBuildOutpost(systemId) {
   const system = state.systems[systemId];
   const fleet = selectedFleet();
-  const cost = getOutpostCost();
+  const cost = getOutpostCost(system);
   if (!canBuildOutpost(system, fleet)) return toast("Select an idle constructor for that outpost.");
   spend(cost);
   if (setFleetCourse(fleet, system.id, "build-outpost")) {
@@ -3126,13 +3406,17 @@ function commandBuildStation(systemId, kind) {
   const system = state.systems[systemId];
   const fleet = selectedFleet();
   const cost = getStationCost(kind);
+  const order = kind === "mining" ? "build-mining" : kind === "shipyard" ? "build-shipyard" : "build-research";
   const hasDeposits =
-    system && (kind === "mining" ? system.deposits.energy + system.deposits.minerals > 0 : system.deposits.research > 0);
+    system &&
+    (kind === "shipyard" ||
+      (kind === "mining" ? system.deposits.energy + system.deposits.minerals > 0 : system.deposits.research > 0));
   if (
     !system ||
     system.owner !== "player" ||
     !system.surveyedBy.player ||
     system.stations[kind] ||
+    fleetOrderForSystem(system, order) ||
     !hasDeposits ||
     !fleet ||
     fleet.owner !== "player" ||
@@ -3144,7 +3428,7 @@ function commandBuildStation(systemId, kind) {
     return toast("Select an idle constructor for that station.");
   }
   spend(cost);
-  if (setFleetCourse(fleet, system.id, kind === "mining" ? "build-mining" : "build-research")) {
+  if (setFleetCourse(fleet, system.id, order)) {
     addLog(`${fleet.name} is assigned to ${system.name}.`);
   }
   updateUI();
@@ -3153,7 +3437,7 @@ function commandBuildStation(systemId, kind) {
 function commandColonize(systemId) {
   const system = state.systems[systemId];
   const fleet = selectedFleet();
-  const cost = getColonizeCost();
+  const cost = getColonizeCost(system);
   if (!canColonize(system, fleet)) {
     return toast("Select an idle constructor to organize that colony mission.");
   }
@@ -3174,7 +3458,7 @@ function commandColonize(systemId) {
 function commandBuildPlanet(systemId, building) {
   const system = state.systems[systemId];
   const build = PLANET_BUILDS[building];
-  if (!system?.colony || system.colony.owner !== "player" || !build || isBuildLocked(build) || !canAfford(build.cost)) {
+  if (!canBuildPlanet(system, building)) {
     return toast("Planetary project requirements are not met.");
   }
   spend(build.cost);
@@ -3192,9 +3476,10 @@ function commandBuildPlanet(systemId, building) {
   updateUI();
 }
 
-function commandBuildShip(shipKey) {
+function commandBuildShip(shipKey, systemId = state.selectedSystemId) {
   const ship = SHIP_BUILDS[shipKey];
-  if (!ship || isBuildLocked(ship) || !canAfford(ship.cost)) {
+  const system = state.systems[Number(systemId)];
+  if (!ship || isBuildLocked(ship) || !system || system.owner !== "player" || !system.stations.shipyard || !canAfford(ship.cost)) {
     return toast("Shipyard requirements are not met.");
   }
   const months = getShipBuildMonths(ship);
@@ -3203,14 +3488,16 @@ function commandBuildShip(shipKey) {
     id: `ship-${shipKey}-${state.month}-${state.buildQueue.length}`,
     type: "ship",
     owner: "player",
-    systemId: state.empires.player.homeSystemId,
+    systemId: system.id,
     label: ship.label,
     remaining: months,
     total: months,
     strength: ship.strength,
     ships: ship.ships,
+    role: ship.role || "navy",
+    speed: ship.speed,
   });
-  addLog(`${ship.label} laid down at Aurelia Shipyard.`);
+  addLog(`${ship.label} laid down at ${system.name} Shipyard.`);
   updateUI();
 }
 
@@ -3221,7 +3508,10 @@ function commandAttack(systemId) {
 
   const pirateFleet = state.fleets.find((item) => item.owner === "pirates" && item.location === system.id);
   if (pirateFleet) {
-    if (setFleetCourse(fleet, system.id, "hunt-pirates")) addLog(`${fleet.name} moves to clear raiders at ${system.name}.`, "war");
+    if (setFleetCourse(fleet, system.id, "hunt-pirates")) {
+      fleet.attackTargetFleetId = state.selectedAttackFleetId || pirateFleet.id;
+      addLog(`${fleet.name} moves to clear raiders at ${system.name}.`, "war");
+    }
     updateUI();
     return;
   }
@@ -3230,6 +3520,8 @@ function commandAttack(systemId) {
   const contact = state.contacts[system.owner];
   if (!contact?.war) return toast("War has not been declared.");
   if (setFleetCourse(fleet, system.id, "attack")) {
+    const selectedTarget = fleetById(state.selectedAttackFleetId);
+    fleet.attackTargetFleetId = selectedTarget?.location === system.id ? selectedTarget.id : null;
     addLog(`${fleet.name} receives attack orders for ${system.name}.`, "war");
   }
   updateUI();
@@ -3254,6 +3546,7 @@ function commandReturnSelectedFleet() {
   if (!home || (fleet.location === home.id && !fleet.route.length)) return toast(`${fleet.name} is already at the capital.`);
   fleet.route = [];
   fleet.progress = 0;
+  clearFleetWork(fleet);
   fleet.order = "idle";
   if (setFleetCourse(fleet, home.id, "move")) {
     addLog(`${fleet.name} returns to ${home.name}.`);
@@ -3266,10 +3559,27 @@ function commandHoldSelectedFleet() {
   if (!fleet || fleet.owner !== "player") return toast("Select a Commonwealth ship.");
   fleet.route = [];
   fleet.progress = 0;
+  clearFleetWork(fleet);
   fleet.target = null;
   fleet.order = "idle";
   if (fleet.role === "science") getAutoSurveySettings(fleet).enabled = false;
+  if (fleet.role === "navy") getAutoAttackSettings(fleet).enabled = false;
   addLog(`${fleet.name} holds position.`);
+  updateUI();
+}
+
+function commandCancelFleetOrders(fleetId) {
+  const fleet = fleetById(fleetId) || selectedFleet();
+  if (!fleet || fleet.owner !== "player") return toast("Select a Commonwealth ship.");
+  fleet.route = [];
+  fleet.progress = 0;
+  clearFleetWork(fleet);
+  fleet.target = null;
+  fleet.order = "idle";
+  fleet.attackTargetFleetId = null;
+  if (fleet.role === "science") getAutoSurveySettings(fleet).enabled = false;
+  if (fleet.role === "navy") getAutoAttackSettings(fleet).enabled = false;
+  addLog(`${fleet.name} cancels current orders.`);
   updateUI();
 }
 
@@ -3292,6 +3602,25 @@ function commandToggleAutoSurveyLimit(fleetId, limit, enabled) {
   updateUI();
 }
 
+function commandToggleAutoAttack(fleetId, enabled) {
+  const fleet = fleetById(fleetId) || selectedFleet();
+  if (!fleet || fleet.owner !== "player" || fleet.role !== "navy") return;
+  const settings = getAutoAttackSettings(fleet);
+  settings.enabled = Boolean(enabled);
+  if (settings.enabled && fleet.order === "idle" && !fleet.route.length) assignAutoAttackTarget(fleet, true);
+  updateUI();
+}
+
+function commandToggleAutoAttackLimit(fleetId, limit, enabled) {
+  const fleet = fleetById(fleetId) || selectedFleet();
+  if (!fleet || fleet.owner !== "player" || fleet.role !== "navy") return;
+  const settings = getAutoAttackSettings(fleet);
+  if (!(limit in settings.limits)) return;
+  settings.limits[limit] = Boolean(enabled);
+  if (settings.enabled && fleet.order === "idle" && !fleet.route.length) assignAutoAttackTarget(fleet, true);
+  updateUI();
+}
+
 function canSplitFleet(fleet = selectedFleet()) {
   return Boolean(
     fleet &&
@@ -3302,6 +3631,23 @@ function canSplitFleet(fleet = selectedFleet()) {
       fleet.ships >= 2 &&
       fleet.strength >= 4
   );
+}
+
+function mergeableFleets(fleet = selectedFleet()) {
+  if (!fleet || fleet.owner !== "player" || fleet.role !== "navy" || fleet.order !== "idle" || fleet.route.length) return [];
+  return state.fleets.filter(
+    (item) =>
+      item.id !== fleet.id &&
+      item.owner === "player" &&
+      item.role === "navy" &&
+      item.location === fleet.location &&
+      item.order === "idle" &&
+      !item.route.length
+  );
+}
+
+function canMergeFleet(fleet = selectedFleet()) {
+  return mergeableFleets(fleet).length > 0;
 }
 
 function commandSplitFleet() {
@@ -3331,10 +3677,46 @@ function commandSplitFleet() {
     maxStrength: splitMax,
     ships: splitShips,
     speed: fleet.speed,
+    autoAttack: createAutoAttackSettings(),
   };
   state.fleets.push(detachment);
   state.selectedFleetId = detachment.id;
   addLog(`${detachment.name} splits from ${fleet.name} at ${system.name}.`);
+  updateUI();
+}
+
+function commandMergeFleet() {
+  const fleet = selectedFleet();
+  const others = mergeableFleets(fleet);
+  if (!fleet || !others.length) return toast("Select an idle combat fleet sharing a system with another combat fleet.");
+  for (const other of others) {
+    fleet.ships += other.ships;
+    fleet.strength += other.strength;
+    fleet.maxStrength += other.maxStrength;
+  }
+  state.fleets = state.fleets.filter((item) => !others.includes(item));
+  const system = state.systems[fleet.location];
+  addLog(`${fleet.name} combines with ${others.length} local fleet${others.length === 1 ? "" : "s"} at ${system.name}.`, "war");
+  updateUI();
+}
+
+function canAttackFleet(targetFleet, fleet = selectedFleet()) {
+  if (!targetFleet || !fleet || fleet.owner !== "player" || fleet.role !== "navy" || fleet.order !== "idle") return false;
+  if (!ownersHostile("player", targetFleet.owner)) return false;
+  return Boolean(routeBetween(fleet.location, targetFleet.location, "player"));
+}
+
+function commandAttackFleet(targetFleetId) {
+  const targetFleet = fleetById(targetFleetId);
+  const fleet = selectedFleet();
+  if (!canAttackFleet(targetFleet, fleet)) return toast("Select an idle combat fleet and a hostile target fleet.");
+  const system = state.systems[targetFleet.location];
+  const order = targetFleet.owner === "pirates" ? "hunt-pirates" : "attack";
+  if (setFleetCourse(fleet, system.id, order)) {
+    fleet.attackTargetFleetId = targetFleet.id;
+    state.selectedAttackFleetId = targetFleet.id;
+    addLog(`${fleet.name} targets ${targetFleet.name} at ${system.name}.`, "war");
+  }
   updateUI();
 }
 
@@ -3446,6 +3828,9 @@ function removeDestroyedFleets() {
 
 function resolveFleetCombat(attacker, defenders, system) {
   if (!defenders.length) return true;
+  if (attacker.attackTargetFleetId) {
+    defenders = defenders.slice().sort((a, b) => (a.id === attacker.attackTargetFleetId ? -1 : b.id === attacker.attackTargetFleetId ? 1 : 0));
+  }
   const defenderPower = defenders.reduce((sum, fleet) => sum + fleetCombatPower(fleet), 0);
   const attackerRoll = fleetCombatPower(attacker) * randRange(0.82, 1.24);
   const defenderRoll = defenderPower * randRange(0.82, 1.24);
@@ -3619,14 +4004,30 @@ function updateUI() {
   renderResources();
   renderEmpirePanel();
   renderFleetPanel();
+  renderIdeologyPanels();
   renderResearchPanel();
   renderInspector();
   renderDiplomacy();
   renderLog();
   renderModal();
   renderMainMenu();
+  renderPanelMenus();
   renderTerritoryLegend();
   renderIconKeyWindow();
+}
+
+function renderPanelMenus() {
+  document.querySelectorAll("[data-left-panel]").forEach((panel) => {
+    panel.hidden = panel.dataset.leftPanel !== state.leftMenu;
+  });
+  document.querySelectorAll("[data-right-panel]").forEach((panel) => {
+    panel.hidden = panel.dataset.rightPanel !== state.rightMenu;
+  });
+  document.querySelectorAll("[data-panel-menu]").forEach((button) => {
+    const side = button.dataset.panelMenu;
+    const target = button.dataset.panelTarget;
+    button.classList.toggle("is-active", state[`${side}Menu`] === target);
+  });
 }
 
 function renderMainMenu() {
@@ -3727,6 +4128,7 @@ function renderIconKeyWindow() {
     "colonyMission",
     "miningStation",
     "researchStation",
+    "shipyard",
     ...Object.keys(PLANET_BUILDS),
   ];
   const ships = [
@@ -3801,11 +4203,6 @@ function renderEmpirePanel() {
     <div class="meter" title="Victory progress"><span style="width:${clamp(victory * 100, 4, 100)}%"></span></div>
     <div class="small-note" style="margin-top:7px">Control 34 systems, settle 8 colonies, or take every rival capital.</div>
     ${renderActiveModifiers()}
-    ${renderIdeologyMenus()}
-    <div class="subhead">Shipyard</div>
-    <div class="action-grid">
-      ${Object.keys(SHIP_BUILDS).map(shipButton).join("")}
-    </div>
     <div class="subhead">Queue</div>
     <div class="queue-list">
       ${
@@ -3825,7 +4222,7 @@ function renderEmpirePanel() {
       }
     </div>
     <div class="subhead">Capital</div>
-    <button class="fleet-chip" data-action="select-system" data-system="${home.id}">
+    <button class="fleet-chip" data-action="select-system" data-system="${home.id}" title="Select and center the capital system.">
       <span class="fleet-dot" style="background:${state.empires.player.color}"></span>
       <span><span class="fleet-name">${escapeHtml(home.name)}</span><span class="fleet-status">${escapeHtml(home.colony.name)}</span></span>
       <span class="mini-tag">Seat</span>
@@ -3863,29 +4260,38 @@ function stat(label, value) {
   `;
 }
 
-function shipButton(key) {
+function shipButton(key, system = selectedSystem()) {
   const ship = SHIP_BUILDS[key];
   const locked = isBuildLocked(ship);
-  const disabled = locked || !canAfford(ship.cost);
+  const hasShipyard = Boolean(system?.owner === "player" && system.stations.shipyard);
+  const disabled = locked || !hasShipyard || !canAfford(ship.cost);
   const months = getShipBuildMonths(ship);
-  const title = locked ? requirementLabel(ship.requires) : `${costText(ship.cost)} - ${months} months`;
+  const roleText =
+    ship.role === "science"
+      ? "Creates a new science vessel for surveys and auto-survey."
+      : ship.role === "constructor"
+        ? "Creates a new construction ship for outposts, stations, and colonies."
+        : `Adds ${fmt(ship.ships)} combat ship${ship.ships === 1 ? "" : "s"} and ${fmt(ship.strength)} fleet power at ${system?.name || "the selected"} shipyard.`;
+  const title = locked
+    ? `${ship.label}: ${requirementLabel(ship.requires)}.`
+    : hasShipyard
+      ? `Queue ${ship.label} at ${system.name}. Cost: ${costText(ship.cost)}. Takes ${months} months. ${roleText}`
+      : `Select a player system with a shipyard to build ${ship.label}.`;
   return `
-    <button class="action-button" data-action="build-ship" data-ship="${key}" ${disabled ? "disabled" : ""} title="${escapeHtml(title)}">
+    <button class="action-button" data-action="build-ship" data-ship="${key}" data-system="${system?.id ?? ""}" ${disabled ? "disabled" : ""} title="${escapeHtml(title)}">
       ${escapeHtml(ship.label)}
     </button>
   `;
 }
 
-function renderIdeologyMenus() {
-  return `
-    ${renderIdeologyMenu("political", "Political Ideology")}
-    ${renderIdeologyMenu("economic", "Economic Ideology")}
-  `;
+function renderIdeologyPanels() {
+  els.politicalPanel.innerHTML = renderIdeologyMenu("political");
+  els.economicPanel.innerHTML = renderIdeologyMenu("economic");
 }
 
-function renderIdeologyMenu(category, title) {
+function renderIdeologyMenu(category) {
   return `
-    <div class="subhead">${title}</div>
+    <div class="small-note" style="margin-bottom:8px">Choose one doctrine. Changing doctrine swaps its modifiers immediately.</div>
     <div class="ideology-grid">
       ${IDEOLOGIES[category]
         .map((ideology) => {
@@ -3923,7 +4329,7 @@ function renderFleetPanel() {
               : `${orderLabel(fleet.order)}${target ? `: ${target.name}` : ""}`;
           const color = fleet.role === "science" ? "#4fd1d8" : fleet.role === "constructor" ? "#d7c36a" : "#ec6a64";
           return `
-            <button class="fleet-chip ${fleet.id === state.selectedFleetId ? "is-selected" : ""}" data-action="select-fleet" data-fleet="${fleet.id}">
+            <button class="fleet-chip ${fleet.id === state.selectedFleetId ? "is-selected" : ""}" data-action="select-fleet" data-fleet="${fleet.id}" title="Select ${escapeHtml(fleet.name)} and show its ship orders.">
               <span class="fleet-dot" style="background:${color}"></span>
               <span><span class="fleet-name">${escapeHtml(fleet.name)}</span><span class="fleet-status">${escapeHtml(status)}</span></span>
               <span class="mini-tag">${fleet.role === "navy" ? fmt(fleet.strength) : fleet.role}</span>
@@ -3945,7 +4351,14 @@ function renderFleetOrders() {
   const status =
     fleet.order === "idle"
       ? `Holding at ${location.name}`
-      : `${orderLabel(fleet.order)}${target ? ` to ${target.name}` : ""}`;
+      : fleet.route.length
+        ? `${orderLabel(fleet.order)} to ${target?.name || location.name}`
+        : fleet.workTotal
+          ? `${orderLabel(fleet.order)} at ${target?.name || location.name} (${Math.max(
+              1,
+              Math.ceil(fleet.workTotal - (fleet.workProgress || 0))
+            )} mo)`
+          : `${orderLabel(fleet.order)}${target ? ` at ${target.name}` : ""}`;
   const moveDisabled = !system || fleet.order !== "idle" || (fleet.location === system.id && !fleet.route.length);
   const homeId = state.empires.player.homeSystemId;
   const returnDisabled = fleet.location === homeId && !fleet.route.length;
@@ -3958,16 +4371,22 @@ function renderFleetOrders() {
       <div class="inline-stats">
         <span class="mini-tag">${fleet.role === "navy" ? `Power ${fmt(fleet.strength)}` : `${fmt(fleet.ships)} hull`}</span>
         <span class="mini-tag">${fleet.route.length ? `${fleet.route.length} jumps` : "Local orbit"}</span>
+        ${fleet.workTotal ? `<span class="mini-tag">Work ${fmt((fleet.workProgress / fleet.workTotal) * 100)}%</span>` : ""}
         ${fleet.role === "science" && getAutoSurveySettings(fleet).enabled ? `<span class="mini-tag">Auto Survey</span>` : ""}
+        ${fleet.role === "navy" && getAutoAttackSettings(fleet).enabled ? `<span class="mini-tag">Auto Attack</span>` : ""}
+        ${state.selectedAttackFleetId ? `<span class="mini-tag">Target selected</span>` : ""}
       </div>
       ${fleet.role === "science" ? renderAutoSurveyControls(fleet) : ""}
+      ${fleet.role === "navy" ? renderAutoAttackControls(fleet) : ""}
       <div class="action-grid">
         ${roleOrders}
-        ${actionButton("Move Here", "move-selected-fleet", { system: system?.id ?? "" }, moveDisabled, "primary", "No resource cost")}
-        ${actionButton("Return Home", "return-fleet", {}, returnDisabled, "", "No resource cost")}
-        ${fleet.role === "navy" ? actionButton("Split Fleet", "split-fleet", {}, !canSplitFleet(fleet), "", "Split this navy fleet into two half-strength fleets") : ""}
-        ${actionButton("Hold", "hold-fleet", {}, fleet.order === "idle" && !fleet.route.length, "", "No resource cost")}
-        ${system ? actionButton("Focus System", "select-system", { system: system.id }, false, "", "Center the selected system") : ""}
+        ${actionButton("Move Here", "move-selected-fleet", { system: system?.id ?? "" }, moveDisabled, "primary", system ? `Send ${fleet.name} to ${system.name}. No resource cost.` : "Select a destination system first.")}
+        ${actionButton("Return Home", "return-fleet", {}, returnDisabled, "", `Send ${fleet.name} back to the capital system. No resource cost.`)}
+        ${fleet.role === "navy" ? actionButton("Split Fleet", "split-fleet", {}, !canSplitFleet(fleet), "", "Split this combat fleet into two half-strength fleets at its current system.") : ""}
+        ${fleet.role === "navy" ? actionButton("Combine Fleet", "merge-fleet", {}, !canMergeFleet(fleet), "", "Merge this idle combat fleet with other idle combat fleets in the same system.") : ""}
+        ${actionButton("Cancel Orders", "cancel-fleet-orders", { fleet: fleet.id }, fleet.order === "idle" && !fleet.route.length, "", `Stop ${fleet.name}, clear its route, and turn off automation.`)}
+        ${actionButton("Hold", "hold-fleet", {}, fleet.order === "idle" && !fleet.route.length, "", `Stop ${fleet.name} and keep it at its current system. No resource cost.`)}
+        ${system ? actionButton("Focus System", "select-system", { system: system.id }, false, "", `Center the camera and inspector on ${system.name}.`) : ""}
       </div>
     </div>
   `;
@@ -3990,6 +4409,7 @@ function renderAutoSurveyControls(fleet) {
           type="checkbox"
           data-action="toggle-auto-survey"
           data-fleet="${escapeHtml(fleet.id)}"
+          title="Toggle automatic survey orders for this science vessel."
           ${settings.enabled ? "checked" : ""}
         />
         <span>Auto Survey</span>
@@ -4005,6 +4425,53 @@ function renderAutoSurveyControls(fleet) {
                   data-action="toggle-auto-survey-limit"
                   data-fleet="${escapeHtml(fleet.id)}"
                   data-limit="${key}"
+                  title="Change which systems this science vessel may survey automatically."
+                  ${settings.limits[key] ? "checked" : ""}
+                />
+                <span>${escapeHtml(label)}</span>
+              </label>
+            `
+          )
+          .join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderAutoAttackControls(fleet) {
+  const settings = getAutoAttackSettings(fleet);
+  const target = chooseAutoAttackTarget(fleet);
+  const limitRows = [
+    ["pirates", "Pirates"],
+    ["warEnemies", "War enemies"],
+    ["weakerOnly", "Weaker only"],
+    ["avoidStarbases", "Avoid starbases"],
+    ["localRange", "3 jumps max"],
+  ];
+  return `
+    <div class="auto-survey-panel">
+      <label class="auto-survey-master">
+        <input
+          type="checkbox"
+          data-action="toggle-auto-attack"
+          data-fleet="${escapeHtml(fleet.id)}"
+          title="Toggle automatic attack orders for this fleet."
+          ${settings.enabled ? "checked" : ""}
+        />
+        <span>Auto Attack</span>
+      </label>
+      <div class="auto-survey-status">${target ? `Next: ${escapeHtml(target.label)}` : "No matching targets"}</div>
+      <div class="limit-grid">
+        ${limitRows
+          .map(
+            ([key, label]) => `
+              <label class="limit-toggle">
+                <input
+                  type="checkbox"
+                  data-action="toggle-auto-attack-limit"
+                  data-fleet="${escapeHtml(fleet.id)}"
+                  data-limit="${key}"
+                  title="Change which targets this fleet may attack automatically."
                   ${settings.limits[key] ? "checked" : ""}
                 />
                 <span>${escapeHtml(label)}</span>
@@ -4020,20 +4487,41 @@ function renderAutoSurveyControls(fleet) {
 function renderShipRoleOrders(fleet, system) {
   if (!system) return "";
   if (fleet.role === "science") {
-    return actionButton("Survey", "survey-system", { system: system.id }, !canSurvey(system, fleet), "primary", "No resource cost");
+    return actionButton("Survey", "survey-system", { system: system.id }, !canSurvey(system, fleet), "primary", `Order ${fleet.name} to survey ${system.name}. No resource cost.`);
   }
   if (fleet.role === "constructor") {
     return `
-      ${actionButton("Outpost", "build-outpost", { system: system.id }, !canBuildOutpost(system, fleet), "primary", costText(getOutpostCost()))}
-      ${actionButton("Mining Station", "build-mining", { system: system.id }, !canBuildMining(system, fleet), "", costText(getStationCost("mining")))}
-      ${actionButton("Research Station", "build-research", { system: system.id }, !canBuildResearch(system, fleet), "", costText(getStationCost("research")))}
-      ${actionButton("Colonize", "colonize", { system: system.id }, !canColonize(system, fleet), "primary", costText(getColonizeCost()))}
+      ${actionButton("Outpost", "build-outpost", { system: system.id }, !canBuildOutpost(system, fleet), "primary", `Send ${fleet.name} to build an outpost in ${system.name}. Cost: ${costText(getOutpostCost(system))}.`)}
+      ${actionButton("Mining Station", "build-mining", { system: system.id }, !canBuildMining(system, fleet), "", `Send ${fleet.name} to build a mining station in ${system.name}. Cost: ${costText(getStationCost("mining"))}.`)}
+      ${actionButton("Research Station", "build-research", { system: system.id }, !canBuildResearch(system, fleet), "", `Send ${fleet.name} to build a research station in ${system.name}. Cost: ${costText(getStationCost("research"))}.`)}
+      ${actionButton("Shipyard", "build-shipyard", { system: system.id }, !canBuildShipyard(system, fleet), "primary", `Send ${fleet.name} to build a shipyard in ${system.name}. Cost: ${costText(getStationCost("shipyard"))}. Ships can only be built in systems with shipyards.`)}
+      ${actionButton("Colonize", "colonize", { system: system.id }, !canColonize(system, fleet), "primary", `Organize a colony mission to ${system.name}. Cost: ${costText(getColonizeCost(system))}.`)}
     `;
   }
   if (fleet.role === "navy") {
-    return actionButton("Attack", "attack-system", { system: system.id }, !canAttack(system, fleet), "danger", "No resource cost");
+    return `
+      ${renderAttackTargetButtons(system, fleet)}
+      ${actionButton("Attack System", "attack-system", { system: system.id }, !canAttack(system, fleet), "danger", `Order ${fleet.name} to attack hostile forces or the enemy outpost in ${system.name}. No resource cost.`)}
+    `;
   }
   return "";
+}
+
+function renderAttackTargetButtons(system, fleet) {
+  const targets = state.fleets.filter((item) => item.location === system.id && item.role === "navy" && ownersHostile("player", item.owner));
+  if (!targets.length) return "";
+  return targets
+    .map((target) =>
+      actionButton(
+        `Attack ${target.name}`,
+        "attack-fleet",
+        { targetFleet: target.id },
+        !canAttackFleet(target, fleet),
+        target.id === state.selectedAttackFleetId ? "danger is-active" : "danger",
+        `Order ${fleet.name} to prioritize ${target.name} at ${system.name}. No resource cost.`
+      )
+    )
+    .join("");
 }
 
 function orderLabel(order) {
@@ -4041,6 +4529,7 @@ function orderLabel(order) {
     "build-outpost": "Outpost",
     "build-mining": "Mining",
     "build-research": "Station",
+    "build-shipyard": "Shipyard",
     "hunt-pirates": "Raiders",
     "ai-attack": "Strike",
     attack: "Attack",
@@ -4138,6 +4627,7 @@ function renderInspector() {
   const owner = system.owner ? state.empires[system.owner] : null;
   const ownerName = owner ? owner.name : "Unclaimed";
   const surveyed = system.surveyedBy.player;
+  const isCapital = system.id === state.empires.player.homeSystemId;
   const deposits = surveyed
     ? `${system.deposits.energy} energy, ${system.deposits.minerals} minerals, ${system.deposits.research} research`
     : "Unknown";
@@ -4152,6 +4642,7 @@ function renderInspector() {
       <div class="system-subtitle">${escapeHtml(system.star.code)} class star - ${escapeHtml(planet)}</div>
       <div class="owner-line">
         <span class="mini-tag">${escapeHtml(ownerName)}</span>
+        ${isCapital ? `<span class="mini-tag capital-tag">Capital</span>` : ""}
         <span class="mini-tag">${surveyed ? "Surveyed" : "Unsurveyed"}</span>
         ${system.anomaly && !system.anomalyResolved ? `<span class="mini-tag">Anomaly</span>` : ""}
         ${pirate ? `<span class="mini-tag">Raiders ${fmt(pirate.strength)}</span>` : ""}
@@ -4163,7 +4654,22 @@ function renderInspector() {
     </div>
     ${renderSystemMap(system)}
     ${renderSystemProgress(system)}
+    ${renderShipyardBlock(system)}
     ${renderColonyBlock(system)}
+  `;
+}
+
+function renderShipyardBlock(system) {
+  if (!system.stations.shipyard || system.owner !== "player") return "";
+  return `
+    <div class="subhead">Shipyard</div>
+    <div class="colony-row">
+      <strong>${escapeHtml(system.name)} Shipyard</strong>
+      <div class="queue-meta">Ships queued here will launch or reinforce fleets in this system.</div>
+      <div class="action-grid">
+        ${Object.keys(SHIP_BUILDS).map((key) => shipButton(key, system)).join("")}
+      </div>
+    </div>
   `;
 }
 
@@ -4183,6 +4689,7 @@ function renderSystemMap(system) {
           .join("")}
         <span class="system-star" title="${escapeHtml(system.star.code)} class star"></span>
         ${system.starbase ? renderStarbaseNode(system) : ""}
+        ${system.stations.shipyard ? renderStationNode("shipyard") : ""}
         ${bodies.map((body) => renderSystemBody(system, body, selected?.id === body.id)).join("")}
         ${system.stations.mining ? renderStationNode("mining") : ""}
         ${system.stations.research ? renderStationNode("research") : ""}
@@ -4204,7 +4711,7 @@ function renderStarbaseNode(system) {
 }
 
 function renderStationNode(kind) {
-  const type = kind === "mining" ? "miningStation" : "researchStation";
+  const type = kind === "mining" ? "miningStation" : kind === "shipyard" ? "shipyard" : "researchStation";
   const meta = INFRASTRUCTURE_META[type];
   return `
     <span class="station-node ${kind}" title="${escapeHtml(meta.label)}" aria-label="${escapeHtml(meta.label)}">
@@ -4227,8 +4734,8 @@ function renderSystemBody(system, body, isSelected) {
       data-action="select-body"
       data-system="${system.id}"
       data-body="${escapeHtml(body.id)}"
-      title="${escapeHtml(body.name)}"
-      aria-label="${escapeHtml(body.name)}"
+      title="${escapeHtml(`Select ${body.name} in the solar system map.`)}"
+      aria-label="${escapeHtml(`Select ${body.name}`)}"
     >
       ${renderBodyInstallations(system, body)}
     </button>
@@ -4277,15 +4784,16 @@ function renderSystemShip(system, fleet, index) {
   const y = 50 + Math.sin(angle) * radius;
   const moving = fleet.route.length ? "is-moving" : "";
   const working = fleet.order !== "idle" ? "is-working" : "";
+  const title = fleet.owner === "player" ? `Select ${fleet.name}.` : `Select ${fleet.name} as an attack target.`;
   return `
     <button
-      class="system-ship ${fleet.role} ${moving} ${working} ${fleet.id === state.selectedFleetId ? "is-selected" : ""}"
+      class="system-ship ${fleet.role} ${moving} ${working} ${fleet.id === state.selectedFleetId || fleet.id === state.selectedAttackFleetId ? "is-selected" : ""}"
       style="--body-x:${x}%; --body-y:${y}%; --body-color:${color}; --ship-delay:${index * -0.42}s; --ship-tilt:${Math.round(angle * 40)}deg; background:${color}"
       data-action="select-fleet"
       data-fleet="${fleet.id}"
       data-order="${escapeHtml(fleet.order)}"
-      title="${escapeHtml(fleet.name)}"
-      aria-label="${escapeHtml(fleet.name)}"
+      title="${escapeHtml(title)}"
+      aria-label="${escapeHtml(title)}"
     ></button>
   `;
 }
@@ -4347,13 +4855,14 @@ function systemProgressRows(system) {
   const outpostFleet = fleetOrderForSystem(system, "build-outpost");
   const miningFleet = fleetOrderForSystem(system, "build-mining");
   const researchFleet = fleetOrderForSystem(system, "build-research");
+  const shipyardFleet = fleetOrderForSystem(system, "build-shipyard");
   const colonyQueue = findBuildQueueItem(system, "colony");
   const miningDeposits = system.deposits.energy + system.deposits.minerals;
   const researchDeposits = system.deposits.research;
 
   rows.push({
     label: "Survey",
-    status: system.surveyedBy.player ? "Complete" : surveyFleet ? `${surveyFleet.name} en route` : "Unsurveyed",
+    status: system.surveyedBy.player ? "Complete" : surveyFleet ? fleetOrderStatus(surveyFleet) : "Unsurveyed",
     progress: system.surveyedBy.player ? 1 : fleetOrderProgress(surveyFleet),
     color: INFRASTRUCTURE_META.researchStation.color,
     complete: system.surveyedBy.player,
@@ -4361,7 +4870,7 @@ function systemProgressRows(system) {
 
   rows.push({
     label: "Outpost",
-    status: owner ? owner.name : outpostFleet ? `${outpostFleet.name} en route` : "Unclaimed",
+    status: owner ? owner.name : outpostFleet ? fleetOrderStatus(outpostFleet) : "Unclaimed",
     progress: system.owner ? 1 : fleetOrderProgress(outpostFleet),
     color: owner?.color || INFRASTRUCTURE_META.starbase.color,
     complete: Boolean(system.owner),
@@ -4387,7 +4896,7 @@ function systemProgressRows(system) {
     status: system.stations.mining
       ? "Online"
       : miningFleet
-        ? `${miningFleet.name} en route`
+        ? fleetOrderStatus(miningFleet)
         : miningDeposits > 0
           ? `${miningDeposits} extractable deposits`
           : "No deposits",
@@ -4402,7 +4911,7 @@ function systemProgressRows(system) {
     status: system.stations.research
       ? "Online"
       : researchFleet
-        ? `${researchFleet.name} en route`
+        ? fleetOrderStatus(researchFleet)
         : researchDeposits > 0
           ? `${researchDeposits} research deposits`
           : "No deposits",
@@ -4410,6 +4919,14 @@ function systemProgressRows(system) {
     color: INFRASTRUCTURE_META.researchStation.color,
     complete: system.stations.research,
     muted: researchDeposits <= 0,
+  });
+
+  rows.push({
+    label: "Shipyard",
+    status: system.stations.shipyard ? "Online" : shipyardFleet ? fleetOrderStatus(shipyardFleet) : "Not built",
+    progress: system.stations.shipyard ? 1 : fleetOrderProgress(shipyardFleet),
+    color: INFRASTRUCTURE_META.shipyard.color,
+    complete: system.stations.shipyard,
   });
 
   if (system.owner || system.danger > 0) {
@@ -4441,7 +4958,7 @@ function systemProgressRows(system) {
     for (const [key, build] of Object.entries(PLANET_BUILDS)) {
       const count = colony.buildings[key] || 0;
       const queued = findBuildQueueItem(system, "planet", key);
-      const benchmark = buildingBenchmark(system);
+      const benchmark = buildingTypeLimit(system, key);
       const queuedProgress = buildQueueProgress(queued);
       rows.push({
         label: build.label,
@@ -4491,8 +5008,27 @@ function fleetOrderForSystem(system, order) {
 
 function fleetOrderProgress(fleet) {
   if (!fleet) return 0;
-  if (!fleet.route.length) return fleet.location === fleet.target ? 1 : 0;
+  if (fleet.workTotal) return clamp((fleet.workProgress || 0) / fleet.workTotal, 0, 0.99);
+  if (!fleet.route.length) return 0;
   return clamp(fleet.progress / Math.max(fleet.segmentMonths, 1), 0, 0.96);
+}
+
+function fleetOrderStatus(fleet) {
+  if (!fleet) return "";
+  if (fleet.route.length) return `${fleet.name} en route`;
+  return `${fleet.name} ${orderWorkLabel(fleet.order)}`;
+}
+
+function orderWorkLabel(order) {
+  return (
+    {
+      survey: "surveying",
+      "build-outpost": "building outpost",
+      "build-mining": "building mining station",
+      "build-research": "building research station",
+      "build-shipyard": "building shipyard",
+    }[order] || "working"
+  );
 }
 
 function buildingBenchmark(system) {
@@ -4521,6 +5057,8 @@ function renderColonyBlock(system) {
     return "";
   }
   const colony = system.colony;
+  const usedSlots = colonyBuildingCount(system) + queuedPlanetBuildCount(system);
+  const maxSlots = colonyBuildingLimit(system);
   return `
     <div class="subhead">Colony</div>
     <div class="colony-row">
@@ -4529,18 +5067,20 @@ function renderColonyBlock(system) {
         <span class="mini-tag">${fmt(colony.pops)} pops</span>
         <span class="mini-tag">${fmt(colony.stability)} stability</span>
         <span class="mini-tag">${Math.round(colony.growth * 100)}% growth</span>
+        <span class="mini-tag">${usedSlots}/${maxSlots} building slots</span>
       </div>
       <div class="action-grid">
         ${Object.entries(PLANET_BUILDS)
           .map(([key, build]) => {
             const locked = isBuildLocked(build);
+            const capped = !locked && !canBuildPlanet(system, key) && (usedSlots >= maxSlots || (colony.buildings[key] || 0) + queuedPlanetBuildCount(system, key) >= buildingTypeLimit(system, key));
             return actionButton(
               build.label,
               "build-planet",
               { system: system.id, building: key },
-              locked || !canAfford(build.cost),
+              locked || !canBuildPlanet(system, key),
               "",
-              locked ? requirementLabel(build.requires) : `${costText(build.cost)} - ${build.months} months`
+              planetBuildTitle(system, key, locked, capped)
             );
           })
           .join("")}
@@ -4549,11 +5089,39 @@ function renderColonyBlock(system) {
   `;
 }
 
+function planetBuildTitle(system, key, locked = false, capped = false) {
+  const build = PLANET_BUILDS[key];
+  if (locked) return `${build.label}: ${requirementLabel(build.requires)}.`;
+  if (capped) return `${build.label}: building cap reached for this system.`;
+  const yieldText = buildingYieldText(system, key);
+  return `Build ${build.label} on ${system.colony.name}. Cost: ${costText(build.cost)}. Takes ${build.months} months.${yieldText ? ` Produces: ${yieldText}.` : ""}`;
+}
+
+function buildingYieldText(system, key) {
+  const colony = system?.colony;
+  if (!colony) return "";
+  if (key === "bureau") {
+    const influence = (0.45 + colony.pops * 0.018) * (1 + state.modifiers.influenceOutput);
+    return `${oneDecimal(influence)} influence/month and 1.2 unity/month`;
+  }
+  const yields = {
+    generator: "energy",
+    mining: "minerals",
+    lab: "research",
+    foundry: "alloys",
+    city: "unity and growth",
+    hydroponics: "growth and stability",
+    tradeHub: "energy and unity",
+    fortress: "defense and unity",
+  };
+  return yields[key] || "";
+}
+
 function actionButton(label, action, data, disabled, tone = "", title = "") {
   const attrs = Object.entries(data)
     .map(([key, value]) => `data-${key}="${escapeHtml(value)}"`)
     .join(" ");
-  const titleAttr = title ? `title="${escapeHtml(title)}"` : "";
+  const titleAttr = `title="${escapeHtml(title || `Press to ${label.toLowerCase()}.`)}"`;
   return `<button class="action-button ${tone}" data-action="${action}" ${attrs} ${titleAttr} ${disabled ? "disabled" : ""}>${escapeHtml(label)}</button>`;
 }
 
@@ -4563,6 +5131,7 @@ function canBuildMining(system, fleet = selectedFleet()) {
       system.owner === "player" &&
       system.surveyedBy.player &&
       !system.stations.mining &&
+      !fleetOrderForSystem(system, "build-mining") &&
       system.deposits.energy + system.deposits.minerals > 0 &&
       fleet?.owner === "player" &&
       fleet.role === "constructor" &&
@@ -4578,6 +5147,7 @@ function canBuildResearch(system, fleet = selectedFleet()) {
       system.owner === "player" &&
       system.surveyedBy.player &&
       !system.stations.research &&
+      !fleetOrderForSystem(system, "build-research") &&
       system.deposits.research > 0 &&
       fleet?.owner === "player" &&
       fleet.role === "constructor" &&
@@ -4587,14 +5157,30 @@ function canBuildResearch(system, fleet = selectedFleet()) {
   );
 }
 
-function canColonize(system, fleet = null) {
-  const cost = getColonizeCost();
+function canBuildShipyard(system, fleet = selectedFleet()) {
   return Boolean(
     system &&
       system.owner === "player" &&
-      system.planet &&
-      !system.colony &&
-      canAfford(cost) &&
+      system.surveyedBy.player &&
+      !system.stations.shipyard &&
+      !fleetOrderForSystem(system, "build-shipyard") &&
+      fleet?.owner === "player" &&
+      fleet.role === "constructor" &&
+      fleet.order === "idle" &&
+      canAfford(getStationCost("shipyard")) &&
+      routeBetween(fleet.location, system.id, "player")
+  );
+}
+
+function canColonize(system, fleet = null) {
+  const cost = getColonizeCost(system);
+  return Boolean(
+    system &&
+    system.owner === "player" &&
+    system.planet &&
+    !system.colony &&
+    !findBuildQueueItem(system, "colony") &&
+    canAfford(cost) &&
       (!fleet ||
         (fleet.owner === "player" &&
           fleet.role === "constructor" &&
@@ -4632,14 +5218,14 @@ function renderDiplomacy() {
             </div>
             <span class="mini-tag" style="border-color:${color}; color:${color}">${contact.war ? "War" : relation > 20 ? "Warm" : relation < -35 ? "Tense" : "Neutral"}</span>
             <div class="contact-actions">
-              <button class="ghost-button" data-action="embassy" data-empire="${empire.id}" title="${escapeHtml(costText(getEmbassyCost()))}" ${contact.war ? "disabled" : ""}>Embassy</button>
-              <button class="ghost-button" data-action="rival" data-empire="${empire.id}" title="Gain 35 influence" ${contact.war ? "disabled" : ""}>Rival</button>
+              <button class="ghost-button" data-action="embassy" data-empire="${empire.id}" title="Spend ${escapeHtml(costText(getEmbassyCost()))} to improve relations with ${escapeHtml(empire.name)}." ${contact.war ? "disabled" : ""}>Embassy</button>
+              <button class="ghost-button" data-action="rival" data-empire="${empire.id}" title="Declare ${escapeHtml(empire.name)} a rival, worsening relations and gaining 35 influence." ${contact.war ? "disabled" : ""}>Rival</button>
               ${
                 contact.war
-                  ? `<button class="ghost-button" data-action="truce" data-empire="${empire.id}" title="No resource cost">Truce</button>`
+                  ? `<button class="ghost-button" data-action="truce" data-empire="${empire.id}" title="Attempt to end the war with ${escapeHtml(empire.name)}. No resource cost.">Truce</button>`
                   : `<button class="ghost-button" data-action="declare-war" data-empire="${empire.id}" ${
                       contact.truce ? "disabled" : ""
-                    } title="No resource cost">War</button>`
+                    } title="Declare war on ${escapeHtml(empire.name)}. No resource cost.">War</button>`
               }
             </div>
           </div>
@@ -4683,7 +5269,7 @@ function renderModal() {
   els.modalOptions.innerHTML = state.modal.options
     .map(
       (option, index) => `
-      <button class="choice-button" data-decision="${index}">
+      <button class="choice-button" data-decision="${index}" title="${escapeHtml(`${option.label}: ${option.text || "Resolve this event option."}`)}">
         <span class="choice-title">${escapeHtml(option.label)}</span>
         <span class="choice-text">${escapeHtml(option.text || "")}</span>
       </button>
@@ -4912,6 +5498,7 @@ function drawSystems(time) {
   for (const system of state.systems) {
     const known = system.known || system.surveyedBy.player || system.owner === "player";
     const surveyed = system.surveyedBy.player;
+    const isCapital = system.id === state.empires.player.homeSystemId;
     const p = worldToScreen(system.x, system.y);
     if (p.x < -80 || p.y < -80 || p.x > viewport.width + 80 || p.y > viewport.height + 80) continue;
     const baseRadius = system.star.radius * clamp(state.camera.zoom * 1.75, 0.7, 1.7);
@@ -4981,18 +5568,22 @@ function drawSystems(time) {
       }
     }
 
+    ctx.globalAlpha = surveyed || isCapital ? 1 : 0.46;
     const glow = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius * 4);
-    glow.addColorStop(0, hexToRgba(system.star.color, surveyed ? 0.9 : 0.46));
+    glow.addColorStop(0, hexToRgba(system.star.color, surveyed ? 0.9 : 0.2));
     glow.addColorStop(1, hexToRgba(system.star.color, 0));
     ctx.fillStyle = glow;
     ctx.beginPath();
     ctx.arc(p.x, p.y, radius * 4, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = surveyed ? system.star.color : "#9ca5aa";
+    ctx.fillStyle = surveyed ? system.star.color : "#66717a";
     ctx.beginPath();
-    ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+    ctx.arc(p.x, p.y, surveyed ? radius : radius * 0.72, 0, Math.PI * 2);
     ctx.fill();
+    ctx.globalAlpha = 1;
+
+    if (isCapital) drawCapitalMarker(p, radius);
 
     drawSystemInfrastructure(system, p, radius, time);
 
@@ -5007,6 +5598,24 @@ function drawSystems(time) {
       ctx.fillText(system.name, p.x, p.y - radius - 9);
     }
   }
+}
+
+function drawCapitalMarker(p, radius) {
+  ctx.save();
+  ctx.strokeStyle = "#d7c36a";
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, radius + 15, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = "#d7c36a";
+  ctx.beginPath();
+  ctx.moveTo(p.x, p.y - radius - 22);
+  ctx.lineTo(p.x + 5, p.y - radius - 13);
+  ctx.lineTo(p.x, p.y - radius - 16);
+  ctx.lineTo(p.x - 5, p.y - radius - 13);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
 }
 
 function drawSystemInfrastructure(system, p, radius, time) {
@@ -5085,6 +5694,13 @@ function systemInfrastructureIcons(system, options = {}) {
       type: "researchStation",
       label: INFRASTRUCTURE_META.researchStation.label,
       color: INFRASTRUCTURE_META.researchStation.color,
+    });
+  }
+  if (system.stations.shipyard) {
+    icons.push({
+      type: "shipyard",
+      label: INFRASTRUCTURE_META.shipyard.label,
+      color: INFRASTRUCTURE_META.shipyard.color,
     });
   }
 
@@ -5180,6 +5796,23 @@ function drawInfrastructureShape(type, size) {
     ctx.arc(0, -s * 0.34, s * 0.13, 0, Math.PI * 2);
     ctx.arc(s * 0.34, s * 0.28, s * 0.13, 0, Math.PI * 2);
     ctx.arc(-s * 0.34, s * 0.28, s * 0.13, 0, Math.PI * 2);
+    ctx.fill();
+    return;
+  }
+  if (type === "shipyard") {
+    ctx.beginPath();
+    ctx.moveTo(0, -s * 0.46);
+    ctx.lineTo(s * 0.44, -s * 0.1);
+    ctx.lineTo(s * 0.28, s * 0.44);
+    ctx.lineTo(-s * 0.28, s * 0.44);
+    ctx.lineTo(-s * 0.44, -s * 0.1);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.24, s * 0.08);
+    ctx.lineTo(s * 0.24, s * 0.08);
+    ctx.lineTo(0, s * 0.32);
+    ctx.closePath();
     ctx.fill();
     return;
   }
@@ -5559,7 +6192,17 @@ function handleAction(action, target) {
     return;
   }
   if (action === "select-fleet") {
+    const clickedFleet = fleetById(data.fleet);
+    if (clickedFleet && clickedFleet.owner !== "player") {
+      state.selectedAttackFleetId = clickedFleet.id;
+      state.selectedSystemId = clickedFleet.location;
+      state.selectedBodyId = preferredBodyId(state.systems[clickedFleet.location]);
+      state.rightMenu = "system";
+      updateUI();
+      return;
+    }
     state.selectedFleetId = data.fleet;
+    state.selectedAttackFleetId = null;
     const fleet = selectedFleet();
     if (fleet) {
       const position = fleetPosition(fleet);
@@ -5568,6 +6211,7 @@ function handleAction(action, target) {
       const systemId = fleet.target ?? fleet.location;
       state.selectedSystemId = systemId;
       state.selectedBodyId = preferredBodyId(state.systems[systemId]);
+      state.rightMenu = "system";
     }
     updateUI();
     return;
@@ -5579,23 +6223,30 @@ function handleAction(action, target) {
   if (action === "select-body") {
     state.selectedSystemId = Number(data.system);
     state.selectedBodyId = data.body;
+    state.rightMenu = "system";
     updateUI();
     return;
   }
   if (action === "move-selected-fleet") return commandMoveSelectedFleet(Number(data.system));
   if (action === "return-fleet") return commandReturnSelectedFleet();
   if (action === "split-fleet") return commandSplitFleet();
+  if (action === "merge-fleet") return commandMergeFleet();
   if (action === "hold-fleet") return commandHoldSelectedFleet();
+  if (action === "cancel-fleet-orders") return commandCancelFleetOrders(data.fleet);
   if (action === "toggle-auto-survey") return commandToggleAutoSurvey(data.fleet, target.checked);
   if (action === "toggle-auto-survey-limit") return commandToggleAutoSurveyLimit(data.fleet, data.limit, target.checked);
+  if (action === "toggle-auto-attack") return commandToggleAutoAttack(data.fleet, target.checked);
+  if (action === "toggle-auto-attack-limit") return commandToggleAutoAttackLimit(data.fleet, data.limit, target.checked);
   if (action === "survey-system") return commandSurvey(Number(data.system));
   if (action === "build-outpost") return commandBuildOutpost(Number(data.system));
   if (action === "build-mining") return commandBuildStation(Number(data.system), "mining");
   if (action === "build-research") return commandBuildStation(Number(data.system), "research");
+  if (action === "build-shipyard") return commandBuildStation(Number(data.system), "shipyard");
   if (action === "colonize") return commandColonize(Number(data.system));
   if (action === "build-planet") return commandBuildPlanet(Number(data.system), data.building);
-  if (action === "build-ship") return commandBuildShip(data.ship);
+  if (action === "build-ship") return commandBuildShip(data.ship, data.system);
   if (action === "attack-system") return commandAttack(Number(data.system));
+  if (action === "attack-fleet") return commandAttackFleet(data.targetFleet);
   if (action === "set-ideology") return commandSetIdeology(data.category, data.ideology);
   if (action === "choose-tech") return chooseTech(data.tech);
   if (action === "remove-tech") return commandRemoveQueuedResearch(data.tech);
@@ -5630,6 +6281,14 @@ function bindEvents() {
       document.querySelectorAll("[data-map-mode]").forEach((button) => {
         button.classList.toggle("is-active", button.dataset.mapMode === state.mapMode);
       });
+      updateUI();
+      return;
+    }
+    const panelTab = event.target.closest("[data-panel-menu]");
+    if (panelTab) {
+      const side = panelTab.dataset.panelMenu;
+      if (side === "left") state.leftMenu = panelTab.dataset.panelTarget;
+      if (side === "right") state.rightMenu = panelTab.dataset.panelTarget;
       updateUI();
       return;
     }

@@ -55,6 +55,8 @@ async function runViewport(browser, viewport) {
     let autoSurveyTargetFound = false;
     let autoSurveyCanStart = false;
     let autoSurveyHeldOff = false;
+    let surveyDelayedAfterArrival = false;
+    let surveyCompletesAfterWork = false;
     if (target) {
       state.selectedSystemId = target.id;
       state.selectedFleetId = "sci-meridian";
@@ -76,6 +78,18 @@ async function runViewport(browser, viewport) {
       updateUI();
       surveyOrderButton = Boolean(document.querySelector('.fleet-order-card [data-action="survey-system"]'));
       commandSurvey(target.id);
+      const manualSurveyFleet = selectedFleet();
+      for (let i = 0; i < 30 && manualSurveyFleet.route.length; i += 1) updateFleets();
+      surveyDelayedAfterArrival =
+        manualSurveyFleet.location === target.id &&
+        manualSurveyFleet.order === "survey" &&
+        !target.surveyedBy.player &&
+        manualSurveyFleet.workTotal > 0;
+      for (let i = 0; i < 10 && !target.surveyedBy.player; i += 1) {
+        updateFleets();
+        if (state.modal) resolveDecision(0);
+      }
+      surveyCompletesAfterWork = surveyDelayedAfterArrival && target.surveyedBy.player;
     }
 
     for (let i = 0; i < 18; i += 1) {
@@ -114,7 +128,83 @@ async function runViewport(browser, viewport) {
     updateUI();
     const sameSystemMiningBefore = home.stations.mining;
     commandBuildStation(home.id, "mining");
-    const sameSystemBuild = !sameSystemMiningBefore && home.stations.mining;
+    const miningFleet = selectedFleet();
+    const sameSystemBuildDelayed =
+      !sameSystemMiningBefore &&
+      !home.stations.mining &&
+      miningFleet.order === "build-mining" &&
+      miningFleet.location === home.id &&
+      miningFleet.workTotal > 0;
+    for (let i = 0; i < 10 && !home.stations.mining; i += 1) updateFleets();
+    const sameSystemBuild = sameSystemBuildDelayed && home.stations.mining && miningFleet.order === "idle";
+    const moveTarget = state.systems[home.hyperlanes[0]];
+    selectSystem(moveTarget.id, false);
+    state.selectedFleetId = "con-dauntless";
+    commandMoveSelectedFleet(moveTarget.id);
+    const cancelHadOrder = selectedFleet()?.order === "move";
+    commandCancelFleetOrders("con-dauntless");
+    const cancelWorked = cancelHadOrder && selectedFleet()?.order === "idle" && !selectedFleet()?.route.length;
+
+    const noShipyardTarget = state.systems.find((system) => system.known && !system.stations.shipyard && system.id !== home.id) || moveTarget;
+    selectSystem(noShipyardTarget.id, false);
+    updateUI();
+    const shipyardUiHiddenAway = document.querySelectorAll('[data-action="build-ship"]').length === 0;
+    const queueBeforeInvalidShip = state.buildQueue.length;
+    commandBuildShip("scienceVessel", noShipyardTarget.id);
+    const shipBuildBlockedWithoutShipyard = state.buildQueue.length === queueBeforeInvalidShip;
+
+    claimSystem(moveTarget.id, "player", { reveal: true });
+    moveTarget.stations.shipyard = false;
+    const constructor = state.fleets.find((fleet) => fleet.id === "con-dauntless");
+    constructor.location = moveTarget.id;
+    constructor.route = [];
+    constructor.order = "idle";
+    state.selectedFleetId = constructor.id;
+    selectSystem(moveTarget.id, false);
+    const shipyardBeforeBuild = moveTarget.stations.shipyard;
+    commandBuildStation(moveTarget.id, "shipyard");
+    const shipyardBuildStarted =
+      !shipyardBeforeBuild &&
+      !moveTarget.stations.shipyard &&
+      constructor.order === "build-shipyard" &&
+      constructor.location === moveTarget.id &&
+      constructor.workTotal > 0;
+    for (let i = 0; i < 12 && !moveTarget.stations.shipyard; i += 1) updateFleets();
+    const constructorBuiltShipyard = shipyardBuildStarted && moveTarget.stations.shipyard && constructor.order === "idle";
+    updateUI();
+    const shipyardUiVisible = document.querySelectorAll('[data-action="build-ship"]').length >= Object.keys(SHIP_BUILDS).length;
+    const queueBeforeValidShip = state.buildQueue.length;
+    commandBuildShip("scienceVessel", moveTarget.id);
+    const shipBuildQueuedAtShipyard =
+      state.buildQueue.length === queueBeforeValidShip + 1 &&
+      state.buildQueue.at(-1).type === "ship" &&
+      state.buildQueue.at(-1).systemId === moveTarget.id;
+
+    const scienceCountBefore = state.fleets.filter((fleet) => fleet.owner === "player" && fleet.role === "science").length;
+    const constructorCountBefore = state.fleets.filter((fleet) => fleet.owner === "player" && fleet.role === "constructor").length;
+    completeBuild({
+      type: "ship",
+      owner: "player",
+      systemId: home.id,
+      label: "Smoke Surveyor",
+      role: "science",
+      speed: 1.25,
+      strength: 0,
+      ships: 1,
+    });
+    completeBuild({
+      type: "ship",
+      owner: "player",
+      systemId: home.id,
+      label: "Smoke Builder",
+      role: "constructor",
+      speed: 1,
+      strength: 0,
+      ships: 1,
+    });
+    const civilianShipsBuilt =
+      state.fleets.filter((fleet) => fleet.owner === "player" && fleet.role === "science").length === scienceCountBefore + 1 &&
+      state.fleets.filter((fleet) => fleet.owner === "player" && fleet.role === "constructor").length === constructorCountBefore + 1;
 
     const politicalIdeologyButtons = document.querySelectorAll('[data-action="set-ideology"][data-category="political"]').length;
     const economicIdeologyButtons = document.querySelectorAll('[data-action="set-ideology"][data-category="economic"]').length;
@@ -133,6 +223,78 @@ async function runViewport(browser, viewport) {
     home.colony.buildings.bureau = previousBureaus + 1;
     const bureauInfluenceWorks = computeIncome("player").influence > influenceBeforeBureau;
     home.colony.buildings.bureau = previousBureaus;
+    selectSystem(home.id, false);
+    updateUI();
+    const civicHover = document.querySelector('[data-action="build-planet"][data-building="bureau"]')?.title || "";
+    const savedBuildings = { ...home.colony.buildings };
+    home.colony.buildings.city = colonyBuildingLimit(home);
+    const buildingCapWorks = !canBuildPlanet(home, "city");
+    home.colony.buildings = savedBuildings;
+    const farSystem = state.systems
+      .filter((system) => system.id !== home.id)
+      .sort((a, b) => capitalJumpDistance(b) - capitalJumpDistance(a))[0];
+    const distanceCostsWork =
+      farSystem &&
+      getOutpostCost(farSystem).influence > getOutpostCost(home).influence &&
+      getColonizeCost(farSystem).influence > getColonizeCost(home).influence;
+
+    const mergeFleet = state.fleets.find((fleet) => fleet.owner === "player" && fleet.role === "navy" && fleet.location === home.id && !fleet.route.length);
+    state.fleets.push({
+      id: "smoke-merge-fleet",
+      name: "Smoke Merge Wing",
+      owner: "player",
+      role: "navy",
+      location: mergeFleet.location,
+      route: [],
+      progress: 0,
+      segmentMonths: 1,
+      order: "idle",
+      target: null,
+      strength: 3,
+      maxStrength: 3,
+      ships: 1,
+      speed: 1,
+      autoAttack: createAutoAttackSettings(),
+    });
+    state.selectedFleetId = mergeFleet.id;
+    const beforeMergeCount = state.fleets.length;
+    commandMergeFleet();
+    const mergeWorked = state.fleets.length === beforeMergeCount - 1 && !state.fleets.some((fleet) => fleet.id === "smoke-merge-fleet");
+
+    const attackFleet = selectedFleet();
+    const pirateTarget = {
+      id: "smoke-pirate-target",
+      name: "Smoke Raider",
+      owner: "pirates",
+      role: "navy",
+      location: moveTarget.id,
+      route: [],
+      progress: 0,
+      segmentMonths: 1,
+      order: "idle",
+      target: null,
+      strength: 2,
+      maxStrength: 2,
+      ships: 1,
+      speed: 1,
+    };
+    state.fleets.push(pirateTarget);
+    state.selectedSystemId = moveTarget.id;
+    updateUI();
+    const attackFleetButtons = document.querySelectorAll('[data-action="attack-fleet"]').length;
+    commandAttackFleet(pirateTarget.id);
+    const attackFleetOrderWorked = attackFleet.order === "hunt-pirates" && attackFleet.attackTargetFleetId === pirateTarget.id;
+    commandCancelFleetOrders(attackFleet.id);
+    const autoAttackToggle = Boolean(document.querySelector('.fleet-order-card [data-action="toggle-auto-attack"]'));
+    const autoAttackLimitControls = document.querySelectorAll('.fleet-order-card [data-action="toggle-auto-attack-limit"]').length;
+    commandToggleAutoAttack(attackFleet.id, true);
+    const autoAttackCanStart = getAutoAttackSettings(attackFleet).enabled === true && attackFleet.order === "hunt-pirates";
+    commandCancelFleetOrders(attackFleet.id);
+
+    const panelTabs = document.querySelectorAll("[data-panel-menu]").length;
+    selectSystem(home.id, false);
+    state.selectedFleetId = attackFleet.id;
+    updateUI();
 
     const data = context.getImageData(0, 0, canvas.width, canvas.height).data;
     let lit = 0;
@@ -145,6 +307,7 @@ async function runViewport(browser, viewport) {
       after: document.getElementById("dateLabel").textContent,
       resources: document.querySelectorAll(".resource-pill").length,
       actions: document.querySelectorAll("[data-action]").length,
+      buttonsWithoutTitles: [...document.querySelectorAll("button")].filter((button) => !button.title).length,
       systems: state.systems.length,
       fleets: state.fleets.length,
       aiCount: state.aiTemplates.length,
@@ -161,6 +324,27 @@ async function runViewport(browser, viewport) {
       planetBuilds: Object.keys(PLANET_BUILDS).length,
       civicBuildAvailable: Boolean(PLANET_BUILDS.bureau),
       bureauInfluenceWorks,
+      civicHoverIncludesInfluence: /influence/.test(civicHover),
+      buildingCapWorks,
+      distanceCostsWork,
+      civilianShipsBuilt,
+      shipyardUiHiddenAway,
+      shipBuildBlockedWithoutShipyard,
+      surveyDelayedAfterArrival,
+      surveyCompletesAfterWork,
+      sameSystemBuildDelayed,
+      shipyardBuildStarted,
+      constructorBuiltShipyard,
+      shipyardUiVisible,
+      shipBuildQueuedAtShipyard,
+      cancelWorked,
+      mergeWorked,
+      attackFleetButtons,
+      attackFleetOrderWorked,
+      autoAttackToggle,
+      autoAttackLimitControls,
+      autoAttackCanStart,
+      panelTabs,
       politicalIdeologyButtons,
       economicIdeologyButtons,
       ideologyApplied,
@@ -223,6 +407,7 @@ async function runViewport(browser, viewport) {
   if (result.before === result.after) throw new Error("Simulation date did not advance.");
   if (!result.menuVisible) throw new Error("Main menu did not render before game start.");
   if (result.resources < 6) throw new Error("Resource bar did not render.");
+  if (result.buttonsWithoutTitles > 0) throw new Error("Some rendered buttons are missing hover descriptions.");
   if (result.systems < 80 || result.fleets < 5) throw new Error("Galaxy generation is incomplete.");
   if (result.requestedSystems !== 108) throw new Error("Galaxy size slider was not applied.");
   if (result.systemNamePool < 1500 || result.uniqueSystemNames !== result.systemNamePool) {
@@ -233,10 +418,30 @@ async function runViewport(browser, viewport) {
   if (result.researchables < 20) throw new Error("Expanded research deck did not load.");
   if (!result.allResearchHaveModifiers) throw new Error("Every research must declare at least one modifier.");
   if (!result.researchQueued || result.researchQueueButtons < 3) throw new Error("Research queue controls did not work.");
-  if (result.shipBuilds < 5) throw new Error("Expanded ship builds did not load.");
+  if (result.shipBuilds < 7) throw new Error("Expanded ship builds did not load.");
   if (result.planetBuilds < 9 || !result.civicBuildAvailable || !result.bureauInfluenceWorks) {
     throw new Error("Influence building path did not load or affect income.");
   }
+  if (!result.civicHoverIncludesInfluence) throw new Error("Civic Bureau hover text does not describe influence production.");
+  if (!result.buildingCapWorks) throw new Error("Colony building cap did not prevent overbuilding.");
+  if (!result.distanceCostsWork) throw new Error("Distance-scaled influence costs did not apply.");
+  if (!result.civilianShipsBuilt) throw new Error("Science or construction ship builds did not create civilian fleets.");
+  if (!result.surveyDelayedAfterArrival || !result.surveyCompletesAfterWork) {
+    throw new Error("Science ship surveys complete instantly instead of after on-site work.");
+  }
+  if (!result.cancelWorked) throw new Error("Cancel orders did not clear a ship order.");
+  if (!result.mergeWorked) throw new Error("Fleet merge did not combine local combat fleets.");
+  if (result.attackFleetButtons < 1 || !result.attackFleetOrderWorked) throw new Error("Fleet target attack controls did not work.");
+  if (!result.autoAttackToggle || result.autoAttackLimitControls < 5 || !result.autoAttackCanStart) {
+    throw new Error("Auto-attack controls did not render or assign a target.");
+  }
+  if (!result.shipyardUiHiddenAway || !result.shipBuildBlockedWithoutShipyard) {
+    throw new Error("Shipyard UI/builds are available without a shipyard.");
+  }
+  if (!result.shipyardBuildStarted || !result.constructorBuiltShipyard || !result.shipyardUiVisible || !result.shipBuildQueuedAtShipyard) {
+    throw new Error("Buildable shipyard or shipyard-gated ship construction failed.");
+  }
+  if (result.panelTabs < 7) throw new Error("Separate panel menu tabs did not render.");
   if (result.politicalIdeologyButtons < 4 || result.economicIdeologyButtons < 4 || !result.ideologyApplied) {
     throw new Error("Ideology menus did not render or apply modifiers.");
   }
@@ -252,11 +457,13 @@ async function runViewport(browser, viewport) {
   if (result.progressRows < 10 || result.progressMeters !== result.progressRows) {
     throw new Error("System progress bars did not render for the selected system.");
   }
-  if (result.keyRows < result.planetBuilds + 9) throw new Error("Icon key window did not render every icon family.");
+  if (result.keyRows < result.planetBuilds + 10) throw new Error("Icon key window did not render every icon family.");
   if (result.costTitles < 6) throw new Error("Hover cost titles did not render on action buttons.");
   if (!result.splitWorked) throw new Error("Fleet splitting did not create a detachment.");
   if (!result.shipyardLocalTraining) throw new Error("Shipyard training joined a fleet outside the shipyard system.");
-  if (!result.sameSystemBuild) throw new Error("Constructor could not build a station in its current system.");
+  if (!result.sameSystemBuildDelayed || !result.sameSystemBuild) {
+    throw new Error("Constructor same-system station work did not delay and complete correctly.");
+  }
   if (result.infrastructureSystems < 1) throw new Error("Galaxy infrastructure icon data was not generated.");
   if (result.systemOrderHeading) throw new Error("System inspector still renders a generic Orders section.");
   if (!result.surveyOrderButton) throw new Error("Science ship survey order did not render.");

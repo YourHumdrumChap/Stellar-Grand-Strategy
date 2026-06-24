@@ -275,6 +275,34 @@ button:disabled {
   box-shadow: var(--shadow);
 }
 
+.panel-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.right-rail .panel-tabs {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.panel-tab {
+  min-height: 32px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.055);
+  color: var(--soft);
+  font-size: 11px;
+  font-weight: 820;
+}
+
+.panel-tab.is-active,
+.action-button.is-active {
+  border-color: rgba(215, 195, 106, 0.58);
+  background: rgba(215, 195, 106, 0.13);
+  color: #fbfdff;
+}
+
 .panel-heading {
   display: flex;
   align-items: center;
@@ -707,6 +735,11 @@ button:disabled {
   padding: 2px 6px;
 }
 
+.capital-tag {
+  border-color: rgba(215, 195, 106, 0.58);
+  color: #f1dc88;
+}
+
 .system-header,
 .contact-row,
 .queue-row,
@@ -923,6 +956,10 @@ button:disabled {
   clip-path: polygon(10% 0, 30% 16%, 50% 0, 70% 16%, 90% 0, 90% 100%, 10% 100%);
 }
 
+.install-icon.shipyard::before {
+  clip-path: polygon(50% 0, 100% 38%, 82% 100%, 18% 100%, 0 38%);
+}
+
 .install-count {
   position: absolute;
   right: -4px;
@@ -1066,6 +1103,10 @@ button:disabled {
 
 .station-node.research {
   top: 42px;
+}
+
+.station-node.shipyard {
+  top: 72px;
 }
 
 .body-readout {
@@ -1428,6 +1469,10 @@ button:disabled {
     overflow: visible;
   }
 
+  .panel-tabs {
+    grid-column: 1 / -1;
+  }
+
   .inspector-panel,
   .log-panel {
     grid-column: 1 / -1;
@@ -1442,6 +1487,10 @@ button:disabled {
   .left-rail,
   .right-rail {
     grid-template-columns: 1fr;
+  }
+
+  .left-rail .panel-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .game-shell {

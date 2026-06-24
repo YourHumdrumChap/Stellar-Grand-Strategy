@@ -14,10 +14,10 @@
           <span>Star Sovereigns</span>
         </div>
         <div class="time-controls">
-          <button id="menuBtn" class="square-button" data-action="open-menu" title="Main menu">Menu</button>
-          <button id="pauseBtn" class="square-button" title="Pause or resume">II</button>
+          <button id="menuBtn" class="square-button" data-action="open-menu" title="Open the main menu and galaxy setup controls">Menu</button>
+          <button id="pauseBtn" class="square-button" title="Pause or resume monthly simulation">II</button>
           <button id="stepBtn" class="square-button" title="Advance one month">+1</button>
-          <button id="speedBtn" class="square-button" title="Change speed">1x</button>
+          <button id="speedBtn" class="square-button" title="Cycle the simulation speed">1x</button>
           <span id="dateLabel" class="date-label">Jan 2200</span>
         </div>
         <div id="resourceStrip" class="resource-strip"></div>
@@ -25,10 +25,17 @@
 
       <main class="game-shell">
         <aside class="left-rail">
-          <section class="panel">
+          <nav class="panel-tabs" aria-label="Left panel menu">
+            <button class="panel-tab is-active" data-panel-menu="left" data-panel-target="empire" title="Show empire economy and build queue">Empire</button>
+            <button class="panel-tab" data-panel-menu="left" data-panel-target="political" title="Show political ideology choices and modifiers">Political</button>
+            <button class="panel-tab" data-panel-menu="left" data-panel-target="economic" title="Show economic ideology choices and modifiers">Economic</button>
+            <button class="panel-tab" data-panel-menu="left" data-panel-target="research" title="Show research progress and queued research projects">Research</button>
+          </nav>
+
+          <section class="panel" data-left-panel="empire">
             <div class="panel-heading">
               <h2>Empire</h2>
-              <button class="ghost-button" data-action="new-game" title="New galaxy">New</button>
+              <button class="ghost-button" data-action="new-game" title="Open the main menu to start a new galaxy">New</button>
             </div>
             <div id="empirePanel"></div>
           </section>
@@ -36,12 +43,26 @@
           <section class="panel">
             <div class="panel-heading">
               <h2>Fleets</h2>
-              <button class="ghost-button" data-action="center-home" title="Center capital">Home</button>
+              <button class="ghost-button" data-action="center-home" title="Center the camera on the capital system">Home</button>
             </div>
             <div id="fleetPanel"></div>
           </section>
 
-          <section class="panel">
+          <section class="panel" data-left-panel="political" hidden>
+            <div class="panel-heading">
+              <h2>Political Ideology</h2>
+            </div>
+            <div id="politicalPanel"></div>
+          </section>
+
+          <section class="panel" data-left-panel="economic" hidden>
+            <div class="panel-heading">
+              <h2>Economic Ideology</h2>
+            </div>
+            <div id="economicPanel"></div>
+          </section>
+
+          <section class="panel" data-left-panel="research" hidden>
             <div class="panel-heading">
               <h2>Research</h2>
             </div>
@@ -52,13 +73,13 @@
         <section class="map-stage">
           <canvas id="galaxyCanvas" aria-label="Galaxy map"></canvas>
           <div class="map-toolbar">
-            <button class="map-mode is-active" data-map-mode="political" title="Political map">POL</button>
-            <button class="map-mode" data-map-mode="economy" title="Resource map">ECO</button>
-            <button class="map-mode" data-map-mode="science" title="Science map">SCI</button>
-            <button class="map-mode" data-map-mode="military" title="Military map">MIL</button>
-            <button class="map-mode" data-action="toggle-icon-key" title="Icon key">KEY</button>
-            <button class="map-mode" data-action="zoom-out" title="Zoom out">-</button>
-            <button class="map-mode" data-action="zoom-in" title="Zoom in">+</button>
+            <button class="map-mode is-active" data-map-mode="political" title="Switch to the political territory map">POL</button>
+            <button class="map-mode" data-map-mode="economy" title="Switch to the resource economy map">ECO</button>
+            <button class="map-mode" data-map-mode="science" title="Switch to the survey and anomaly map">SCI</button>
+            <button class="map-mode" data-map-mode="military" title="Switch to the fleet and defense map">MIL</button>
+            <button class="map-mode" data-action="toggle-icon-key" title="Open or close the icon key window">KEY</button>
+            <button class="map-mode" data-action="zoom-out" title="Zoom the galaxy map out">-</button>
+            <button class="map-mode" data-action="zoom-in" title="Zoom the galaxy map in">+</button>
           </div>
           <div id="territoryLegend" class="territory-legend"></div>
           <div id="iconKeyWindow" class="icon-key-window" hidden></div>
@@ -66,7 +87,13 @@
         </section>
 
         <aside class="right-rail">
-          <section class="panel inspector-panel">
+          <nav class="panel-tabs" aria-label="Right panel menu">
+            <button class="panel-tab is-active" data-panel-menu="right" data-panel-target="system" title="Show the selected system and colony menus">System</button>
+            <button class="panel-tab" data-panel-menu="right" data-panel-target="diplomacy" title="Show diplomacy, wars, rivals, and embassies">Diplomacy</button>
+            <button class="panel-tab" data-panel-menu="right" data-panel-target="log" title="Show the chronicle event log">Chronicle</button>
+          </nav>
+
+          <section class="panel inspector-panel" data-right-panel="system">
             <div class="panel-heading">
               <h2>System</h2>
               <span id="selectedTag" class="tag">None</span>
@@ -74,14 +101,14 @@
             <div id="inspectorPanel"></div>
           </section>
 
-          <section class="panel">
+          <section class="panel" data-right-panel="diplomacy" hidden>
             <div class="panel-heading">
               <h2>Diplomacy</h2>
             </div>
             <div id="diplomacyPanel"></div>
           </section>
 
-          <section class="panel log-panel">
+          <section class="panel log-panel" data-right-panel="log" hidden>
             <div class="panel-heading">
               <h2>Chronicle</h2>
             </div>
