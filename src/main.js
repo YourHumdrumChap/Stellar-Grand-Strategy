@@ -5313,10 +5313,23 @@ async function supabaseRequest(path, options = {}) {
   });
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || `Supabase request failed (${response.status}).`);
+    throw new Error(formatSupabaseError(text, response.status));
   }
   if (response.status === 204) return null;
   return response.json();
+}
+
+function formatSupabaseError(text, status) {
+  try {
+    const details = JSON.parse(text);
+    if (details?.code === "PGRST205" && String(details.message || "").includes(MULTIPLAYER_TABLE)) {
+      return `Lobby table missing. Run supabase/schema.sql in the Supabase SQL editor for ${SUPABASE_PROJECT_URL}, then click Refresh again.`;
+    }
+    if (details?.message) return details.message;
+  } catch {
+    // Supabase occasionally returns plain text for gateway or policy errors.
+  }
+  return text || `Supabase request failed (${status}).`;
 }
 
 async function passcodeHash(passcode) {
