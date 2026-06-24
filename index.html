@@ -56,10 +56,12 @@
             <button class="map-mode" data-map-mode="economy" title="Resource map">ECO</button>
             <button class="map-mode" data-map-mode="science" title="Science map">SCI</button>
             <button class="map-mode" data-map-mode="military" title="Military map">MIL</button>
+            <button class="map-mode" data-action="toggle-icon-key" title="Icon key">KEY</button>
             <button class="map-mode" data-action="zoom-out" title="Zoom out">-</button>
             <button class="map-mode" data-action="zoom-in" title="Zoom in">+</button>
           </div>
           <div id="territoryLegend" class="territory-legend"></div>
+          <div id="iconKeyWindow" class="icon-key-window" hidden></div>
           <div id="toast" class="toast" hidden></div>
         </section>
 
@@ -111,6 +113,9 @@
               <option value="barred">Barred Spiral</option>
               <option value="ring">Broken Ring</option>
               <option value="cluster">Star Clusters</option>
+              <option value="elliptical">Elliptical Cloud</option>
+              <option value="twin">Twin Core</option>
+              <option value="rift">Great Rift</option>
             </select>
           </label>
           <label class="menu-field">
@@ -128,6 +133,15 @@
           <label class="menu-field">
             <span>AI Empires</span>
             <input id="menuAiCount" type="number" min="1" max="8" step="1" value="4" />
+          </label>
+          <label class="menu-field">
+            <span>AI Difficulty</span>
+            <select id="menuDifficulty">
+              <option value="cadet">Cadet</option>
+              <option value="standard" selected>Standard</option>
+              <option value="veteran">Veteran</option>
+              <option value="admiral">Admiral</option>
+            </select>
           </label>
         </div>
         <div class="menu-actions">

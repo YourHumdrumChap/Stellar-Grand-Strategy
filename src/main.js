@@ -18,6 +18,7 @@ const els = {
   diplomacyPanel: document.getElementById("diplomacyPanel"),
   logPanel: document.getElementById("logPanel"),
   territoryLegend: document.getElementById("territoryLegend"),
+  iconKeyWindow: document.getElementById("iconKeyWindow"),
   toast: document.getElementById("toast"),
   modalBackdrop: document.getElementById("modalBackdrop"),
   modalKicker: document.getElementById("modalKicker"),
@@ -29,6 +30,7 @@ const els = {
   menuSize: document.getElementById("menuSize"),
   menuSeed: document.getElementById("menuSeed"),
   menuAiCount: document.getElementById("menuAiCount"),
+  menuDifficulty: document.getElementById("menuDifficulty"),
   startMenuBtn: document.getElementById("startMenuBtn"),
   resumeMenuBtn: document.getElementById("resumeMenuBtn"),
 };
@@ -384,38 +386,147 @@ const TECH_LIBRARY = [
       state.modifiers.habitability += 0.18;
     },
   },
+  {
+    id: "modular-shipyards",
+    name: "Modular Shipyards",
+    field: "Engineering",
+    cost: 235,
+    text: "Ship construction accelerates and frigate hulls become available.",
+    apply() {
+      state.modifiers.shipBuildSpeed += 0.15;
+      state.unlocks.frigate = true;
+    },
+  },
+  {
+    id: "cruiser-keels",
+    name: "Cruiser Keelworks",
+    field: "Military",
+    cost: 320,
+    text: "Cruisers become available and fleet morale improves.",
+    apply() {
+      state.unlocks.cruiser = true;
+      state.modifiers.fleetMorale += 0.1;
+    },
+  },
+  {
+    id: "carrier-doctrine",
+    name: "Carrier Doctrine",
+    field: "Military",
+    cost: 420,
+    text: "Carrier task groups become available and fleets project more power.",
+    apply() {
+      state.unlocks.carrier = true;
+      state.modifiers.fleetPower += 0.12;
+    },
+  },
+  {
+    id: "orbital-greenhouses",
+    name: "Orbital Greenhouses",
+    field: "Society",
+    cost: 205,
+    text: "Hydroponic domes become available and colonies grow faster.",
+    apply() {
+      state.unlocks.hydroponics = true;
+      state.modifiers.growth += 0.12;
+    },
+  },
+  {
+    id: "exchange-ports",
+    name: "Exchange Ports",
+    field: "Governance",
+    cost: 230,
+    text: "Trade hubs become available and trade income rises.",
+    apply() {
+      state.unlocks.tradeHub = true;
+      state.modifiers.trade += 0.16;
+    },
+  },
+  {
+    id: "planetary-bastions",
+    name: "Planetary Bastions",
+    field: "Military",
+    cost: 260,
+    text: "Fortress districts become available and starbase defenses improve.",
+    apply() {
+      state.unlocks.fortress = true;
+      state.modifiers.starbaseDefense += 2;
+    },
+  },
+  {
+    id: "zero-g-fabricators",
+    name: "Zero-G Fabricators",
+    field: "Industry",
+    cost: 275,
+    text: "Foundries and shipyards become more efficient.",
+    apply() {
+      state.modifiers.foundries += 0.18;
+      state.modifiers.shipBuildSpeed += 0.1;
+    },
+  },
+  {
+    id: "administrative-ai",
+    name: "Administrative AI",
+    field: "Governance",
+    cost: 300,
+    text: "Sprawl penalties ease and research administration improves.",
+    apply() {
+      state.modifiers.sprawl += 0.22;
+      state.modifiers.researchAdmin += 0.12;
+    },
+  },
 ];
 
 const PLANET_BUILDS = {
   generator: {
     label: "Generator",
-    cost: { minerals: 120 },
+    cost: { minerals: 130 },
     months: 6,
     text: "Energy output",
   },
   mining: {
     label: "Mining",
-    cost: { minerals: 140 },
+    cost: { minerals: 150 },
     months: 7,
     text: "Mineral output",
   },
   lab: {
     label: "Lab",
-    cost: { minerals: 160, energy: 40 },
+    cost: { minerals: 175, energy: 45 },
     months: 8,
     text: "Research output",
   },
   foundry: {
     label: "Foundry",
-    cost: { minerals: 180, energy: 55 },
+    cost: { minerals: 205, energy: 60 },
     months: 9,
     text: "Alloy output",
   },
   city: {
     label: "City",
-    cost: { minerals: 135, unity: 25 },
+    cost: { minerals: 145, unity: 30 },
     months: 7,
     text: "Growth and unity",
+  },
+  hydroponics: {
+    label: "Hydroponics",
+    cost: { minerals: 150, energy: 35 },
+    months: 7,
+    text: "Growth and stability",
+    requires: "hydroponics",
+  },
+  tradeHub: {
+    label: "Trade Hub",
+    cost: { minerals: 170, energy: 50 },
+    months: 8,
+    text: "Energy and unity",
+    requires: "tradeHub",
+  },
+  fortress: {
+    label: "Fortress",
+    cost: { minerals: 215, alloys: 45 },
+    months: 10,
+    text: "Defense and unity",
+    requires: "fortress",
   },
 };
 
@@ -431,24 +542,51 @@ const INFRASTRUCTURE_META = {
   lab: { label: "Lab district", color: "#4fd1d8" },
   foundry: { label: "Foundry district", color: "#ec6a64" },
   city: { label: "City district", color: "#ad8cff" },
+  hydroponics: { label: "Hydroponics district", color: "#67d38f" },
+  tradeHub: { label: "Trade hub", color: "#f2b84b" },
+  fortress: { label: "Fortress district", color: "#c5d5dc" },
 };
 
 const SHIP_BUILDS = {
   corvette: {
     label: "Corvette",
-    cost: { alloys: 90, energy: 20 },
+    cost: { alloys: 105, energy: 25 },
     months: 4,
     strength: 5,
     ships: 1,
     requires: null,
   },
+  frigate: {
+    label: "Frigate",
+    cost: { alloys: 150, energy: 40 },
+    months: 6,
+    strength: 8,
+    ships: 1,
+    requires: "frigate",
+  },
   destroyer: {
     label: "Destroyer",
-    cost: { alloys: 190, energy: 55 },
+    cost: { alloys: 225, energy: 65 },
     months: 7,
     strength: 12,
     ships: 1,
     requires: "destroyer",
+  },
+  cruiser: {
+    label: "Cruiser",
+    cost: { alloys: 390, energy: 110 },
+    months: 11,
+    strength: 24,
+    ships: 1,
+    requires: "cruiser",
+  },
+  carrier: {
+    label: "Carrier",
+    cost: { alloys: 620, energy: 180, unity: 45 },
+    months: 15,
+    strength: 42,
+    ships: 1,
+    requires: "carrier",
   },
 };
 
@@ -463,9 +601,19 @@ const GALAXY_SHAPES = {
   barred: { label: "Barred Spiral", arms: 2 },
   ring: { label: "Broken Ring", arms: 1 },
   cluster: { label: "Star Clusters", arms: 5 },
+  elliptical: { label: "Elliptical Cloud", arms: 1 },
+  twin: { label: "Twin Core", arms: 2 },
+  rift: { label: "Great Rift", arms: 2 },
 };
 
-const DEFAULT_GALAXY = { shape: "spiral", size: "standard", aiCount: 4 };
+const AI_DIFFICULTIES = {
+  cadet: { label: "Cadet", economy: 0.78, stockpile: 0.8, fleet: 0.82, expansion: 0.82, aggression: -0.14 },
+  standard: { label: "Standard", economy: 1, stockpile: 1, fleet: 1, expansion: 1, aggression: 0 },
+  veteran: { label: "Veteran", economy: 1.18, stockpile: 1.15, fleet: 1.12, expansion: 1.14, aggression: 0.08 },
+  admiral: { label: "Admiral", economy: 1.38, stockpile: 1.32, fleet: 1.24, expansion: 1.28, aggression: 0.16 },
+};
+
+const DEFAULT_GALAXY = { shape: "spiral", size: "standard", aiCount: 4, difficulty: "standard" };
 
 const BODY_COLORS = {
   Arid: "#c9955c",
@@ -660,6 +808,151 @@ const SPACE_EVENTS = [
       },
     ],
   },
+  {
+    id: "toll-compact",
+    title: "Hyperlane Toll Compact",
+    text: "Merchant houses offer to formalize toll routes through settled lanes, creating richer trade but more bureaucracy.",
+    options: [
+      {
+        label: "Charter the compact",
+        text: "18 months: trade income rises, diplomacy costs rise slightly.",
+        modifier: {
+          id: "toll-compact-charter",
+          label: "Toll Compact",
+          duration: 18,
+          effects: { trade: 0.32, diplomacyCost: 0.05 },
+          text: "+0.32 energy per system, +5% diplomacy costs",
+        },
+      },
+      {
+        label: "Keep lanes open",
+        text: "14 months: diplomacy is cheaper and unity improves.",
+        modifier: {
+          id: "open-lane-charter",
+          label: "Open Lane Charter",
+          duration: 14,
+          effects: { diplomacyCost: -0.08, unity: 0.08 },
+          text: "-8% diplomacy costs, +8% unity output",
+        },
+      },
+    ],
+  },
+  {
+    id: "shipwright-surge",
+    title: "Shipwright Surge",
+    text: "A wave of trained crews and private drydock contractors volunteer for naval expansion contracts.",
+    options: [
+      {
+        label: "Standardize hull frames",
+        text: "16 months: ships finish faster.",
+        modifier: {
+          id: "standard-hull-frames",
+          label: "Standard Hull Frames",
+          duration: 16,
+          effects: { shipBuildSpeed: 0.25 },
+          text: "+25% ship build speed",
+        },
+      },
+      {
+        label: "Prioritize veteran crews",
+        text: "14 months: fleets gain combat morale.",
+        modifier: {
+          id: "veteran-crews",
+          label: "Veteran Crews",
+          duration: 14,
+          effects: { fleetMorale: 0.14 },
+          text: "+14% fleet combat power",
+        },
+      },
+    ],
+  },
+  {
+    id: "frontier-contractors",
+    title: "Frontier Contractor Boom",
+    text: "Construction guilds compete for orbital contracts after a run of successful frontier surveys.",
+    options: [
+      {
+        label: "Bulk-buy station kits",
+        text: "18 months: orbital stations cost less.",
+        modifier: {
+          id: "station-kit-contracts",
+          label: "Station Kit Contracts",
+          duration: 18,
+          effects: { stationBuildCost: -0.18 },
+          text: "-18% station construction costs",
+        },
+      },
+      {
+        label: "Embed survey engineers",
+        text: "14 months: survey ships and constructors move faster.",
+        modifier: {
+          id: "survey-engineers",
+          label: "Survey Engineers",
+          duration: 14,
+          effects: { surveySpeed: 0.12, shipSpeed: 0.08 },
+          text: "+12% survey speed, +8% fleet speed",
+        },
+      },
+    ],
+  },
+  {
+    id: "repair-yard-initiative",
+    title: "Repair Yard Initiative",
+    text: "Starbase crews propose modular repair docks that can patch damaged warships between campaigns.",
+    options: [
+      {
+        label: "Fund repair slips",
+        text: "20 months: damaged fleets repair in friendly systems.",
+        modifier: {
+          id: "repair-slips",
+          label: "Repair Slips",
+          duration: 20,
+          effects: { repairRate: 0.1 },
+          text: "+10% monthly fleet repair in friendly systems",
+        },
+      },
+      {
+        label: "Train damage-control crews",
+        text: "16 months: fleets take fewer losses.",
+        modifier: {
+          id: "damage-control-crews",
+          label: "Damage-Control Crews",
+          duration: 16,
+          effects: { combatSurvival: 0.1, repairRate: 0.04 },
+          text: "+10% combat survival, +4% monthly repair",
+        },
+      },
+    ],
+  },
+  {
+    id: "customs-crackdown",
+    title: "Customs Crackdown",
+    text: "Smugglers and raiders are using civilian traffic as cover near the frontier.",
+    options: [
+      {
+        label: "Inspect every convoy",
+        text: "18 months: pirates are less likely, but unity dips.",
+        modifier: {
+          id: "customs-inspections",
+          label: "Customs Inspections",
+          duration: 18,
+          effects: { pirateSuppression: 0.2, unity: -0.05 },
+          text: "-20% pirate risk, -5% unity output",
+        },
+      },
+      {
+        label: "Hire private escorts",
+        text: "14 months: piracy falls and trade improves.",
+        modifier: {
+          id: "private-escorts",
+          label: "Private Escorts",
+          duration: 14,
+          effects: { pirateSuppression: 0.12, trade: 0.18 },
+          text: "-12% pirate risk, +0.18 energy per system",
+        },
+      },
+    ],
+  },
 ];
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
@@ -718,12 +1011,15 @@ function normalizeGalaxySettings(settings = {}) {
   const shape = GALAXY_SHAPES[settings.shape] ? settings.shape : DEFAULT_GALAXY.shape;
   const size = GALAXY_SIZES[settings.size] ? settings.size : DEFAULT_GALAXY.size;
   const aiCount = clamp(Number.parseInt(settings.aiCount, 10) || DEFAULT_GALAXY.aiCount, 1, EMPIRE_TEMPLATES.length);
+  const difficulty = AI_DIFFICULTIES[settings.difficulty] ? settings.difficulty : DEFAULT_GALAXY.difficulty;
   return {
     shape,
     size,
     aiCount,
+    difficulty,
     shapeLabel: GALAXY_SHAPES[shape].label,
     sizeLabel: GALAXY_SIZES[size].label,
+    difficultyLabel: AI_DIFFICULTIES[difficulty].label,
     ...GALAXY_SIZES[size],
   };
 }
@@ -804,12 +1100,29 @@ function newGame(seed = Date.now(), galaxySettings = DEFAULT_GALAXY, options = {
       anomalySafety: 0,
       shipUpkeep: 0,
       surveySpeed: 0,
+      trade: 0,
+      shipBuildSpeed: 0,
+      stationBuildCost: 0,
+      fleetMorale: 0,
+      repairRate: 0,
+      pirateSuppression: 0,
+      foundries: 0,
+      researchAdmin: 0,
     },
-    unlocks: { destroyer: false },
+    unlocks: {
+      frigate: false,
+      destroyer: false,
+      cruiser: false,
+      carrier: false,
+      hydroponics: false,
+      tradeHub: false,
+      fortress: false,
+    },
     tech: { known: [], active: null, progress: 0, choices: [] },
     empires: {},
     contacts: {},
     piratesSpawned: 0,
+    iconKeyOpen: false,
   };
 
   state.empires.player = {
@@ -821,16 +1134,19 @@ function newGame(seed = Date.now(), galaxySettings = DEFAULT_GALAXY, options = {
     stockpile: state.resources,
   };
 
+  const difficulty = AI_DIFFICULTIES[galaxy.difficulty];
   for (const template of state.aiTemplates) {
     state.empires[template.id] = {
       ...template,
+      expansion: template.expansion / difficulty.expansion,
+      aggression: clamp(template.aggression + difficulty.aggression, 0.08, 0.98),
       homeSystemId: null,
       stockpile: createEmptyResources({
-        energy: 280,
-        minerals: 260,
-        alloys: 170,
-        influence: 130,
-        unity: 60,
+        energy: 280 * difficulty.stockpile,
+        minerals: 260 * difficulty.stockpile,
+        alloys: 170 * difficulty.stockpile,
+        influence: 130 * difficulty.stockpile,
+        unity: 60 * difficulty.stockpile,
         research: 0,
       }),
       aiTimer: Math.floor(state.rng() * 6),
@@ -850,7 +1166,7 @@ function newGame(seed = Date.now(), galaxySettings = DEFAULT_GALAXY, options = {
   state.tech.choices = drawTechChoices();
   chooseTech(state.tech.choices[0]?.id, true);
   addLog(
-    `The Commonwealth Senate authorizes expansion into a ${galaxy.sizeLabel.toLowerCase()} ${galaxy.shapeLabel.toLowerCase()} galaxy.`,
+    `The Commonwealth Senate authorizes expansion into a ${galaxy.sizeLabel.toLowerCase()} ${galaxy.shapeLabel.toLowerCase()} galaxy against ${galaxy.difficultyLabel.toLowerCase()} rivals.`,
     "major"
   );
   addLog("Science Vessel Meridian and Constructor Dauntless await orders.", "science");
@@ -906,6 +1222,9 @@ function galaxyPoint(index, count) {
   if (state.galaxy.shape === "barred") return barredGalaxyPoint(index, count);
   if (state.galaxy.shape === "ring") return ringGalaxyPoint(index, count);
   if (state.galaxy.shape === "cluster") return clusterGalaxyPoint(index, count);
+  if (state.galaxy.shape === "elliptical") return ellipticalGalaxyPoint(index, count);
+  if (state.galaxy.shape === "twin") return twinCoreGalaxyPoint(index, count);
+  if (state.galaxy.shape === "rift") return riftGalaxyPoint(index, count);
   return spiralGalaxyPoint(index, count);
 }
 
@@ -971,6 +1290,46 @@ function clusterGalaxyPoint(index) {
     x: center.x + (randomBell() - 0.5) * spread * 2.8,
     y: center.y + (randomBell() - 0.5) * spread * 2.8,
   };
+}
+
+function ellipticalGalaxyPoint() {
+  const scale = state.galaxy.scale;
+  const radius = Math.pow(state.rng(), 0.58) * scale * 1.04;
+  const theta = state.rng() * Math.PI * 2;
+  const squash = randRange(0.48, 0.72);
+  const x = Math.cos(theta) * radius + (randomBell() - 0.5) * scale * 0.1;
+  const y = Math.sin(theta) * radius * squash + (randomBell() - 0.5) * scale * 0.08;
+  return rotatePoint(x, y, 0.22);
+}
+
+function twinCoreGalaxyPoint(index) {
+  const scale = state.galaxy.scale;
+  const side = index % 2 === 0 ? -1 : 1;
+  const bridge = state.rng() < 0.18;
+  if (bridge) {
+    const x = (randomBell() - 0.5) * scale * 0.7;
+    const y = (randomBell() - 0.5) * scale * 0.16;
+    return rotatePoint(x, y, -0.18);
+  }
+  const coreOffset = side * scale * 0.38;
+  const radius = Math.pow(state.rng(), 0.68) * scale * randRange(0.12, 0.38);
+  const theta = state.rng() * Math.PI * 2 + side * 0.4;
+  return rotatePoint(coreOffset + Math.cos(theta) * radius, Math.sin(theta) * radius * randRange(0.72, 1.08), -0.18);
+}
+
+function riftGalaxyPoint(index) {
+  const scale = state.galaxy.scale;
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const side = state.rng() < 0.5 ? -1 : 1;
+    const arm = index % 2;
+    const radius = 170 + Math.pow(state.rng(), 0.7) * scale;
+    const theta = arm * Math.PI + radius / (scale * 0.42) + randRange(-0.5, 0.5);
+    const gap = scale * 0.16;
+    const x = Math.cos(theta) * radius + side * gap;
+    const y = Math.sin(theta) * radius + randRange(-scale * 0.04, scale * 0.04);
+    if (Math.abs(y) > scale * 0.09 || attempt === 11) return rotatePoint(x, y, 0.34);
+  }
+  return spiralGalaxyPoint(index);
 }
 
 function rotatePoint(x, y, angle) {
@@ -1203,19 +1562,17 @@ function assignHomeworlds() {
 }
 
 function createColony(owner, planet, mature = false) {
+  const buildings = Object.fromEntries(Object.keys(PLANET_BUILDS).map((key) => [key, 0]));
+  if (mature) {
+    for (const key of ["generator", "mining", "lab", "foundry", "city"]) buildings[key] = 1;
+  }
   return {
     owner,
     name: planet.name,
     pops: mature ? 8 : 1,
     growth: mature ? 0.2 : 0,
     stability: mature ? 72 : 54,
-    buildings: {
-      generator: mature ? 1 : 0,
-      mining: mature ? 1 : 0,
-      lab: mature ? 1 : 0,
-      foundry: mature ? 1 : 0,
-      city: mature ? 1 : 0,
-    },
+    buildings,
   };
 }
 
@@ -1233,6 +1590,7 @@ function createFleets() {
     order: "idle",
     target: null,
     strength: 0,
+    maxStrength: 0,
     ships: 1,
     speed: 1.25,
   });
@@ -1248,6 +1606,7 @@ function createFleets() {
     order: "idle",
     target: null,
     strength: 0,
+    maxStrength: 0,
     ships: 1,
     speed: 1.0,
   });
@@ -1263,11 +1622,14 @@ function createFleets() {
     order: "idle",
     target: null,
     strength: 14,
+    maxStrength: 14,
     ships: 3,
     speed: 1.05,
   });
 
   for (const template of state.aiTemplates) {
+    const difficulty = AI_DIFFICULTIES[state.galaxy.difficulty];
+    const strength = Math.floor(randRange(13, 21) * difficulty.fleet);
     state.fleets.push({
       id: `fleet-${template.id}`,
       name: `${template.adjective} Spear`,
@@ -1279,7 +1641,8 @@ function createFleets() {
       segmentMonths: 1,
       order: "idle",
       target: null,
-      strength: Math.floor(randRange(13, 21)),
+      strength,
+      maxStrength: strength,
       ships: 4,
       speed: 1.0,
     });
@@ -1432,6 +1795,7 @@ function tickMonth() {
   processResearch();
   processBuildQueue();
   updateFleets();
+  processFleetRepairs();
   processAI();
   updateKnownFromBorders();
   discoverContacts();
@@ -1473,23 +1837,39 @@ function computeIncome(owner) {
   for (const system of systems) {
     if (system.starbase) income.energy -= system.starbase.level === 2 ? 1.5 : 0.6;
     if (system.stations.mining) {
-      income.energy += system.deposits.energy * 2.2 * (1 + (isPlayer ? state.modifiers.stationEnergy : 0));
-      income.minerals += system.deposits.minerals * 2.4 * (1 + (isPlayer ? state.modifiers.stationMinerals : 0));
+      income.energy += system.deposits.energy * 2.05 * (1 + (isPlayer ? state.modifiers.stationEnergy : 0));
+      income.minerals += system.deposits.minerals * 2.25 * (1 + (isPlayer ? state.modifiers.stationMinerals : 0));
     }
     if (system.stations.research) {
-      income.research += system.deposits.research * 2.6 * (1 + (isPlayer ? state.modifiers.stationResearch : 0));
+      income.research += system.deposits.research * 2.45 * (1 + (isPlayer ? state.modifiers.stationResearch : 0));
     }
     if (system.colony && system.colony.owner === owner) {
       const colony = system.colony;
       const habitability = getHabitability(system);
-      income.energy += colony.pops * 0.8 + colony.buildings.generator * 5.5;
+      income.energy +=
+        colony.pops * 0.74 +
+        colony.buildings.generator * 5.2 +
+        (colony.buildings.tradeHub || 0) * (4.8 + systems.length * 0.08);
       income.minerals +=
-        colony.pops * 0.72 + colony.buildings.mining * 5.7 * (1 + (isPlayer ? state.modifiers.miningDistricts : 0));
-      income.alloys += colony.buildings.foundry * 3.4 + Math.max(0, colony.pops - 5) * 0.18;
-      income.research += colony.buildings.lab * 4.4 * (1 + (isPlayer ? state.modifiers.labs : 0));
-      income.unity += colony.buildings.city * 2.1 + colony.pops * 0.24;
+        colony.pops * 0.68 + colony.buildings.mining * 5.3 * (1 + (isPlayer ? state.modifiers.miningDistricts : 0));
+      income.alloys +=
+        colony.buildings.foundry * 3.1 * (1 + (isPlayer ? state.modifiers.foundries : 0)) +
+        Math.max(0, colony.pops - 5) * 0.16;
+      income.research += colony.buildings.lab * 4.1 * (1 + (isPlayer ? state.modifiers.labs : 0));
+      income.unity +=
+        colony.buildings.city * 1.9 +
+        (colony.buildings.tradeHub || 0) * 1.4 +
+        (colony.buildings.fortress || 0) * 1.1 +
+        colony.pops * 0.22;
+      income.energy -= (colony.buildings.fortress || 0) * 0.9;
       income.energy -= (1 - habitability) * colony.pops * 0.3;
     }
+  }
+
+  if (isPlayer && state.modifiers.trade) {
+    const colonies = systems.filter((system) => system.colony?.owner === owner).length;
+    income.energy += systems.length * state.modifiers.trade;
+    income.unity += colonies * state.modifiers.trade * 0.35;
   }
 
   const fleets = state.fleets.filter((fleet) => fleet.owner === owner);
@@ -1510,7 +1890,12 @@ function computeIncome(owner) {
     income.unity *= penalty;
   }
 
+  if (isPlayer) income.research *= 1 + state.modifiers.researchAdmin;
   if (isPlayer) income.unity *= 1 + state.modifiers.unity;
+  if (!isPlayer) {
+    const difficulty = AI_DIFFICULTIES[state.galaxy.difficulty];
+    for (const key of RESOURCE_ORDER) income[key] *= difficulty.economy;
+  }
 
   for (const key of RESOURCE_ORDER) {
     income[key] = Math.round(income[key] * 10) / 10;
@@ -1579,11 +1964,40 @@ function completeBuild(item) {
     addLog(`${system.planet.name} is now a Commonwealth colony.`, "major");
   }
   if (item.type === "ship") {
-    const fleet = getPlayerNavy();
-    fleet.strength += item.strength * (1 + state.modifiers.fleetPower);
+    const fleet = getOrCreateShipyardFleet(item.systemId);
+    const strength = item.strength * (1 + state.modifiers.fleetPower);
+    fleet.strength += strength;
+    fleet.maxStrength += strength;
     fleet.ships += item.ships;
-    addLog(`${item.label} joins ${fleet.name}.`);
+    addLog(`${item.label} joins ${fleet.name} at ${system.name}.`);
   }
+}
+
+function getOrCreateShipyardFleet(systemId) {
+  const localFleet = state.fleets
+    .filter((fleet) => fleet.owner === "player" && fleet.role === "navy" && fleet.location === systemId && !fleet.route.length)
+    .sort((a, b) => b.ships - a.ships)[0];
+  if (localFleet) return localFleet;
+
+  const system = state.systems[systemId];
+  const fleet = {
+    id: `fleet-yard-${systemId}-${state.month}-${state.fleets.length}`,
+    name: `${system.name} Patrol`,
+    owner: "player",
+    role: "navy",
+    location: systemId,
+    route: [],
+    progress: 0,
+    segmentMonths: 1,
+    order: "idle",
+    target: null,
+    strength: 0,
+    maxStrength: 0,
+    ships: 0,
+    speed: 1.05,
+  };
+  state.fleets.push(fleet);
+  return fleet;
 }
 
 function updateFleets() {
@@ -1601,6 +2015,19 @@ function updateFleets() {
         finishFleetOrder(fleet);
       }
     }
+  }
+}
+
+function processFleetRepairs() {
+  for (const fleet of state.fleets) {
+    if (fleet.role !== "navy" || fleet.route.length || fleet.strength >= fleet.maxStrength) continue;
+    const system = state.systems[fleet.location];
+    const friendlyBase = system?.owner === fleet.owner || system?.starbase?.owner === fleet.owner;
+    if (!friendlyBase) continue;
+    const playerBoost = fleet.owner === "player" ? state.modifiers.repairRate : 0;
+    const starbaseBoost = system.starbase?.owner === fleet.owner ? 0.035 + system.starbase.level * 0.018 : 0.025;
+    const repair = fleet.maxStrength * (starbaseBoost + playerBoost);
+    fleet.strength = Math.min(fleet.maxStrength, fleet.strength + repair);
   }
 }
 
@@ -1735,9 +2162,17 @@ function segmentTime(fromId, toId, fleet) {
 
 function setFleetCourse(fleet, targetId, order) {
   const route = routeBetween(fleet.location, targetId, fleet.owner);
-  if (!route || route.length < 2) {
+  if (!route) {
     toast("No known route.");
     return false;
+  }
+  if (route.length < 2) {
+    fleet.route = [];
+    fleet.target = targetId;
+    fleet.order = order;
+    fleet.progress = 0;
+    finishFleetOrder(fleet);
+    return true;
   }
   fleet.route = route.slice(1);
   fleet.target = targetId;
@@ -1804,7 +2239,9 @@ function aiTakeTurn(empire) {
 
   if (empire.stockpile.alloys > 170 && fleet) {
     empire.stockpile.alloys -= 115;
-    fleet.strength += randRange(4, 8);
+    const addedStrength = randRange(4, 8);
+    fleet.strength += addedStrength;
+    fleet.maxStrength += addedStrength;
     fleet.ships += 1;
   }
 
@@ -1953,7 +2390,8 @@ function processRandomEvents() {
     return;
   }
 
-  if (state.month > 42 && state.pirateCooldown <= 0 && state.piratesSpawned < 4 && state.rng() < 0.22) {
+  const pirateChance = Math.max(0.04, 0.22 * (1 - state.modifiers.pirateSuppression));
+  if (state.month > 42 && state.pirateCooldown <= 0 && state.piratesSpawned < 4 && state.rng() < pirateChance) {
     spawnPirates();
     state.pirateCooldown = Math.floor(randRange(36, 54));
   }
@@ -1983,12 +2421,14 @@ function growColonies() {
     if (!system.colony) continue;
     const colony = system.colony;
     const habitability = system.owner === "player" ? getHabitability(system) : system.planet.habitability;
-    const growthRate = (0.19 + habitability * 0.18 + colony.buildings.city * 0.035) * (1 + state.modifiers.growth);
+    const growthRate =
+      (0.17 + habitability * 0.17 + colony.buildings.city * 0.032 + (colony.buildings.hydroponics || 0) * 0.055) *
+      (1 + state.modifiers.growth);
     colony.growth += growthRate;
     if (colony.growth >= 1) {
       colony.growth -= 1;
       colony.pops += 1;
-      colony.stability = clamp(colony.stability + 1, 35, 90);
+      colony.stability = clamp(colony.stability + 1 + (colony.buildings.hydroponics || 0) * 0.4, 35, 90);
       if (system.owner === "player") addLog(`${colony.name} gains a new pop.`);
     }
   }
@@ -2016,6 +2456,7 @@ function spawnPirates() {
     order: "idle",
     target: null,
     strength,
+    maxStrength: strength,
     ships: Math.max(2, Math.round(strength / 4)),
     speed: 0.95,
   });
@@ -2173,7 +2614,37 @@ function canBuildOutpost(system, fleet = selectedFleet()) {
 }
 
 function getOutpostCost() {
-  return scaledCost({ influence: 58, alloys: 82 }, 1 + state.modifiers.outpostCost);
+  return scaledCost({ influence: 64, alloys: 95 }, 1 + state.modifiers.outpostCost);
+}
+
+function getStationCost(kind) {
+  const base = kind === "mining" ? { minerals: 96 } : { minerals: 118 };
+  return scaledCost(base, 1 + state.modifiers.stationBuildCost);
+}
+
+function getColonizeCost() {
+  return scaledCost({ energy: 125, minerals: 210, influence: 42 }, 1 + state.modifiers.colonyCost);
+}
+
+function getShipBuildMonths(ship) {
+  return Math.max(1, Math.round(ship.months * (1 - clamp(state.modifiers.shipBuildSpeed, -0.5, 0.65))));
+}
+
+function isBuildLocked(build) {
+  return Boolean(build?.requires && !state.unlocks[build.requires]);
+}
+
+function requirementLabel(key) {
+  const labels = {
+    frigate: "Requires Modular Shipyards",
+    destroyer: "Requires Layered Fleet Patterns",
+    cruiser: "Requires Cruiser Keelworks",
+    carrier: "Requires Carrier Doctrine",
+    hydroponics: "Requires Orbital Greenhouses",
+    tradeHub: "Requires Exchange Ports",
+    fortress: "Requires Planetary Bastions",
+  };
+  return labels[key] || "Requires research";
 }
 
 function adjacentToPlayer(system) {
@@ -2205,7 +2676,7 @@ function commandBuildOutpost(systemId) {
 function commandBuildStation(systemId, kind) {
   const system = state.systems[systemId];
   const fleet = selectedFleet();
-  const cost = kind === "mining" ? { minerals: 86 } : { minerals: 104 };
+  const cost = getStationCost(kind);
   const hasDeposits =
     system && (kind === "mining" ? system.deposits.energy + system.deposits.minerals > 0 : system.deposits.research > 0);
   if (
@@ -2233,7 +2704,7 @@ function commandBuildStation(systemId, kind) {
 function commandColonize(systemId) {
   const system = state.systems[systemId];
   const fleet = selectedFleet();
-  const cost = scaledCost({ energy: 110, minerals: 185, influence: 36 }, 1 + state.modifiers.colonyCost);
+  const cost = getColonizeCost();
   if (!canColonize(system, fleet)) {
     return toast("Select an idle constructor to organize that colony mission.");
   }
@@ -2254,7 +2725,7 @@ function commandColonize(systemId) {
 function commandBuildPlanet(systemId, building) {
   const system = state.systems[systemId];
   const build = PLANET_BUILDS[building];
-  if (!system?.colony || system.colony.owner !== "player" || !build || !canAfford(build.cost)) {
+  if (!system?.colony || system.colony.owner !== "player" || !build || isBuildLocked(build) || !canAfford(build.cost)) {
     return toast("Planetary project requirements are not met.");
   }
   spend(build.cost);
@@ -2274,9 +2745,10 @@ function commandBuildPlanet(systemId, building) {
 
 function commandBuildShip(shipKey) {
   const ship = SHIP_BUILDS[shipKey];
-  if (!ship || (ship.requires && !state.unlocks[ship.requires]) || !canAfford(ship.cost)) {
+  if (!ship || isBuildLocked(ship) || !canAfford(ship.cost)) {
     return toast("Shipyard requirements are not met.");
   }
+  const months = getShipBuildMonths(ship);
   spend(ship.cost);
   state.buildQueue.push({
     id: `ship-${shipKey}-${state.month}-${state.buildQueue.length}`,
@@ -2284,8 +2756,8 @@ function commandBuildShip(shipKey) {
     owner: "player",
     systemId: state.empires.player.homeSystemId,
     label: ship.label,
-    remaining: ship.months,
-    total: ship.months,
+    remaining: months,
+    total: months,
     strength: ship.strength,
     ships: ship.ships,
   });
@@ -2351,6 +2823,52 @@ function commandHoldSelectedFleet() {
   updateUI();
 }
 
+function canSplitFleet(fleet = selectedFleet()) {
+  return Boolean(
+    fleet &&
+      fleet.owner === "player" &&
+      fleet.role === "navy" &&
+      fleet.order === "idle" &&
+      !fleet.route.length &&
+      fleet.ships >= 2 &&
+      fleet.strength >= 4
+  );
+}
+
+function commandSplitFleet() {
+  const fleet = selectedFleet();
+  if (!canSplitFleet(fleet)) return toast("Select an idle combat fleet with at least two ships.");
+  const splitShips = Math.floor(fleet.ships / 2);
+  const splitRatio = splitShips / fleet.ships;
+  const splitStrength = Math.max(1, fleet.strength * splitRatio);
+  const splitMax = Math.max(splitStrength, fleet.maxStrength * splitRatio);
+  fleet.ships -= splitShips;
+  fleet.strength = Math.max(1, fleet.strength - splitStrength);
+  fleet.maxStrength = Math.max(fleet.strength, fleet.maxStrength - splitMax);
+
+  const system = state.systems[fleet.location];
+  const detachment = {
+    id: `fleet-split-${state.month}-${state.fleets.length}`,
+    name: `${fleet.name} Detachment`,
+    owner: "player",
+    role: "navy",
+    location: fleet.location,
+    route: [],
+    progress: 0,
+    segmentMonths: 1,
+    order: "idle",
+    target: null,
+    strength: splitStrength,
+    maxStrength: splitMax,
+    ships: splitShips,
+    speed: fleet.speed,
+  };
+  state.fleets.push(detachment);
+  state.selectedFleetId = detachment.id;
+  addLog(`${detachment.name} splits from ${fleet.name} at ${system.name}.`);
+  updateUI();
+}
+
 function declareWar(empireId, playerStarted = true) {
   const contact = state.contacts[empireId];
   if (!contact || contact.war || contact.truce > 0) return;
@@ -2369,13 +2887,17 @@ function declareWar(empireId, playerStarted = true) {
 }
 
 function improveRelations(empireId) {
-  const cost = scaledCost({ influence: 28, unity: 35 }, 1 + state.modifiers.diplomacyCost);
+  const cost = getEmbassyCost();
   const contact = state.contacts[empireId];
   if (!contact?.met || contact.war || !canAfford(cost)) return toast("Embassy requirements are not met.");
   spend(cost);
   contact.relation = clamp(contact.relation + 18 + randRange(0, 8), -100, 100);
   addLog(`Envoys open a durable channel with the ${state.empires[empireId].name}.`);
   updateUI();
+}
+
+function getEmbassyCost() {
+  return scaledCost({ influence: 28, unity: 35 }, 1 + state.modifiers.diplomacyCost);
 }
 
 function rivalEmpire(empireId) {
@@ -2401,10 +2923,108 @@ function negotiateTruce(empireId) {
   updateUI();
 }
 
+function ownersHostile(one, two) {
+  if (one === two) return false;
+  if (one === "pirates" || two === "pirates") return true;
+  if (one === "player") return Boolean(state.contacts[two]?.war);
+  if (two === "player") return Boolean(state.contacts[one]?.war);
+  return false;
+}
+
+function hostileFleetsAt(system, owner) {
+  return state.fleets.filter(
+    (fleet) =>
+      fleet.role === "navy" &&
+      fleet.location === system.id &&
+      !fleet.route.length &&
+      fleet.ships > 0 &&
+      ownersHostile(owner, fleet.owner)
+  );
+}
+
+function fleetCombatPower(fleet) {
+  const playerMod = fleet.owner === "player" ? state.modifiers.fleetPower + state.modifiers.fleetMorale : 0;
+  return Math.max(1, fleet.strength * (1 + playerMod));
+}
+
+function damageFleet(fleet, lossFactor) {
+  const beforeShips = fleet.ships;
+  const beforeStrength = fleet.strength;
+  fleet.strength = Math.max(0, fleet.strength * (1 - lossFactor));
+  const remainingShips = Math.max(0, Math.round(beforeShips * (1 - lossFactor * 0.85)));
+  fleet.ships = remainingShips;
+  if (beforeShips > 0) fleet.maxStrength = Math.max(fleet.strength, fleet.maxStrength * (remainingShips / beforeShips));
+  if (fleet.strength < 1.2 || fleet.ships < 1) {
+    fleet.strength = 0;
+    fleet.maxStrength = 0;
+    fleet.ships = 0;
+  }
+  return {
+    shipsLost: Math.max(0, beforeShips - fleet.ships),
+    strengthLost: Math.max(0, beforeStrength - fleet.strength),
+  };
+}
+
+function removeDestroyedFleets() {
+  const destroyed = state.fleets.filter((fleet) => fleet.role === "navy" && (fleet.ships < 1 || fleet.strength < 1));
+  if (!destroyed.length) return destroyed;
+  state.fleets = state.fleets.filter((fleet) => !destroyed.includes(fleet));
+  if (destroyed.some((fleet) => fleet.id === state.selectedFleetId)) {
+    state.selectedFleetId = state.fleets.find((fleet) => fleet.owner === "player")?.id || null;
+  }
+  return destroyed;
+}
+
+function resolveFleetCombat(attacker, defenders, system) {
+  if (!defenders.length) return true;
+  const defenderPower = defenders.reduce((sum, fleet) => sum + fleetCombatPower(fleet), 0);
+  const attackerRoll = fleetCombatPower(attacker) * randRange(0.82, 1.24);
+  const defenderRoll = defenderPower * randRange(0.82, 1.24);
+  const attackerWins = attackerRoll >= defenderRoll;
+  const attackerLoss = attackerWins
+    ? clamp((defenderRoll / Math.max(attackerRoll, 1)) * (0.32 - state.modifiers.combatSurvival), 0.05, 0.38)
+    : clamp((defenderRoll / Math.max(attackerRoll, 1)) * 0.32, 0.24, 0.62);
+  const defenderLoss = attackerWins
+    ? clamp((attackerRoll / Math.max(defenderRoll, 1)) * 0.36, 0.28, 0.72)
+    : clamp((attackerRoll / Math.max(defenderRoll, 1)) * 0.25, 0.06, 0.34);
+
+  const attackerDamage = damageFleet(attacker, attackerLoss);
+  const defenderDamage = defenders.map((fleet) => ({ fleet, damage: damageFleet(fleet, defenderLoss) }));
+  const destroyed = removeDestroyedFleets();
+
+  if (attackerWins) {
+    for (const defender of defenders) {
+      if (!state.fleets.includes(defender)) continue;
+      if (defender.owner === "pirates") {
+        state.fleets = state.fleets.filter((fleet) => fleet !== defender);
+      } else {
+        retreatFleet(defender);
+      }
+    }
+  } else if (state.fleets.includes(attacker)) {
+    retreatFleet(attacker);
+  }
+
+  const defenderNames = defenders.map((fleet) => fleet.name).join(", ");
+  const defenderLost = defenderDamage.reduce((sum, item) => sum + item.damage.shipsLost, 0);
+  const attackerText = attackerDamage.shipsLost ? `${attackerDamage.shipsLost} ships lost` : "ships damaged";
+  const defenderText = defenderLost ? `${defenderLost} ships lost` : "enemy ships damaged";
+  addLog(
+    `${attacker.name} ${attackerWins ? "wins" : "loses"} a fleet engagement against ${defenderNames} at ${system.name}; ${attackerText}, ${defenderText}.`,
+    "war"
+  );
+  for (const fleet of destroyed) addLog(`${fleet.name} is destroyed at ${system.name}.`, "war");
+  return attackerWins && state.fleets.includes(attacker);
+}
+
 function resolvePlayerAttack(fleet, system) {
   if (!system.owner || system.owner === "player") return;
   const contact = state.contacts[system.owner];
   if (!contact?.war) return;
+  if (!resolveFleetCombat(fleet, hostileFleetsAt(system, fleet.owner), system)) {
+    contact.exhaustion = clamp(contact.exhaustion + 6, 0, 100);
+    return;
+  }
   const defender = system.owner;
   const defense = getSystemDefense(system, defender);
   const attackRoll = fleet.strength * randRange(0.78, 1.25);
@@ -2429,6 +3049,10 @@ function resolveAIAttack(fleet, system) {
   if (system.owner !== "player") return;
   const contact = state.contacts[fleet.owner];
   if (!contact?.war) return;
+  if (!resolveFleetCombat(fleet, hostileFleetsAt(system, fleet.owner), system)) {
+    contact.exhaustion = clamp(contact.exhaustion + 8, 0, 100);
+    return;
+  }
   const defense = getSystemDefense(system, "player");
   const attackRoll = fleet.strength * randRange(0.78, 1.25);
   const defenseRoll = defense * randRange(0.82, 1.24);
@@ -2449,18 +3073,11 @@ function resolveAIAttack(fleet, system) {
 function resolvePirateHunt(fleet, system) {
   const pirate = state.fleets.find((item) => item.owner === "pirates" && item.location === system.id);
   if (!pirate) return addLog(`${fleet.name} finds no raiders in ${system.name}.`);
-  const attackRoll = fleet.strength * randRange(0.78, 1.26);
-  const pirateRoll = pirate.strength * randRange(0.82, 1.2);
-  if (attackRoll >= pirateRoll) {
-    fleet.strength = Math.max(2, fleet.strength - pirate.strength * 0.16);
+  if (resolveFleetCombat(fleet, [pirate], system)) {
     state.resources.unity += 24;
     state.resources.energy += 42;
-    state.fleets = state.fleets.filter((item) => item.id !== pirate.id);
     addLog(`${fleet.name} destroys raiders at ${system.name}.`, "war");
   } else {
-    fleet.strength = Math.max(1, fleet.strength * 0.62);
-    pirate.strength = Math.max(2, pirate.strength * 0.74);
-    retreatFleet(fleet);
     addLog(`${fleet.name} takes heavy losses against raiders in ${system.name}.`, "war");
   }
 }
@@ -2504,7 +3121,7 @@ function getSystemDefense(system, owner) {
     defense += system.starbase.defense + system.starbase.level * 3 + (owner === "player" ? state.modifiers.starbaseDefense : 0);
   }
   if (system.colony?.owner === owner) {
-    defense += 4 + system.colony.pops * 1.6 + system.colony.buildings.city * 2;
+    defense += 4 + system.colony.pops * 1.45 + system.colony.buildings.city * 1.8 + (system.colony.buildings.fortress || 0) * 8;
   }
   for (const fleet of state.fleets) {
     if (fleet.owner === owner && fleet.role === "navy" && fleet.location === system.id && !fleet.route.length) {
@@ -2540,6 +3157,7 @@ function updateUI() {
   renderModal();
   renderMainMenu();
   renderTerritoryLegend();
+  renderIconKeyWindow();
 }
 
 function renderMainMenu() {
@@ -2565,6 +3183,7 @@ function syncMenuControls() {
   els.menuSize.value = state.galaxy?.size || DEFAULT_GALAXY.size;
   els.menuSeed.value = String(state.seed || randomSeed());
   els.menuAiCount.value = String(state.galaxy?.aiCount || DEFAULT_GALAXY.aiCount);
+  els.menuDifficulty.value = state.galaxy?.difficulty || DEFAULT_GALAXY.difficulty;
 }
 
 function readMenuSettings() {
@@ -2576,6 +3195,7 @@ function readMenuSettings() {
       shape: els.menuShape.value,
       size: els.menuSize.value,
       aiCount: Number.isFinite(parsedAiCount) ? parsedAiCount : DEFAULT_GALAXY.aiCount,
+      difficulty: els.menuDifficulty.value,
     },
   };
 }
@@ -2621,6 +3241,49 @@ function renderTerritoryLegend() {
     .join("");
 }
 
+function renderIconKeyWindow() {
+  els.iconKeyWindow.hidden = !state.iconKeyOpen;
+  if (!state.iconKeyOpen) return;
+  const infrastructure = [
+    "starbase",
+    "colony",
+    "colonySite",
+    "colonyMission",
+    "miningStation",
+    "researchStation",
+    ...Object.keys(PLANET_BUILDS),
+  ];
+  const ships = [
+    { label: "Science ship", color: "#4fd1d8", shape: "science" },
+    { label: "Constructor", color: "#d7c36a", shape: "constructor" },
+    { label: "Combat fleet", color: "#ec6a64", shape: "navy" },
+  ];
+  els.iconKeyWindow.innerHTML = `
+    <div class="icon-key-head">
+      <strong>Icon Key</strong>
+      <button class="ghost-button" data-action="toggle-icon-key" title="Close icon key">Close</button>
+    </div>
+    <div class="icon-key-grid">
+      ${infrastructure
+        .map((type) => {
+          const meta = INFRASTRUCTURE_META[type];
+          return `<div class="icon-key-row">${renderInstallIcon(type, meta.label)}<span>${escapeHtml(meta.label)}</span></div>`;
+        })
+        .join("")}
+      ${ships
+        .map(
+          (ship) => `
+            <div class="icon-key-row">
+              <span class="ship-key-icon ${ship.shape}" style="--ship-color:${ship.color}"></span>
+              <span>${escapeHtml(ship.label)}</span>
+            </div>
+          `
+        )
+        .join("")}
+    </div>
+  `;
+}
+
 function renderResources() {
   els.resourceStrip.innerHTML = RESOURCE_ORDER.map((key) => {
     const meta = RESOURCE_META[key];
@@ -2664,8 +3327,7 @@ function renderEmpirePanel() {
     ${renderActiveModifiers()}
     <div class="subhead">Shipyard</div>
     <div class="action-grid">
-      ${shipButton("corvette")}
-      ${shipButton("destroyer")}
+      ${Object.keys(SHIP_BUILDS).map(shipButton).join("")}
     </div>
     <div class="subhead">Queue</div>
     <div class="queue-list">
@@ -2726,10 +3388,12 @@ function stat(label, value) {
 
 function shipButton(key) {
   const ship = SHIP_BUILDS[key];
-  const locked = ship.requires && !state.unlocks[ship.requires];
+  const locked = isBuildLocked(ship);
   const disabled = locked || !canAfford(ship.cost);
+  const months = getShipBuildMonths(ship);
+  const title = locked ? requirementLabel(ship.requires) : `${costText(ship.cost)} - ${months} months`;
   return `
-    <button class="action-button" data-action="build-ship" data-ship="${key}" ${disabled ? "disabled" : ""} title="${escapeHtml(costText(ship.cost))}">
+    <button class="action-button" data-action="build-ship" data-ship="${key}" ${disabled ? "disabled" : ""} title="${escapeHtml(title)}">
       ${escapeHtml(ship.label)}
     </button>
   `;
@@ -2787,10 +3451,11 @@ function renderFleetOrders() {
       </div>
       <div class="action-grid">
         ${roleOrders}
-        ${actionButton("Move Here", "move-selected-fleet", { system: system?.id ?? "" }, moveDisabled, "primary")}
-        ${actionButton("Return Home", "return-fleet", {}, returnDisabled, "")}
-        ${actionButton("Hold", "hold-fleet", {}, fleet.order === "idle" && !fleet.route.length, "")}
-        ${system ? actionButton("Focus System", "select-system", { system: system.id }, false, "") : ""}
+        ${actionButton("Move Here", "move-selected-fleet", { system: system?.id ?? "" }, moveDisabled, "primary", "No resource cost")}
+        ${actionButton("Return Home", "return-fleet", {}, returnDisabled, "", "No resource cost")}
+        ${fleet.role === "navy" ? actionButton("Split Fleet", "split-fleet", {}, !canSplitFleet(fleet), "", "Split this navy fleet into two half-strength fleets") : ""}
+        ${actionButton("Hold", "hold-fleet", {}, fleet.order === "idle" && !fleet.route.length, "", "No resource cost")}
+        ${system ? actionButton("Focus System", "select-system", { system: system.id }, false, "", "Center the selected system") : ""}
       </div>
     </div>
   `;
@@ -2799,18 +3464,18 @@ function renderFleetOrders() {
 function renderShipRoleOrders(fleet, system) {
   if (!system) return "";
   if (fleet.role === "science") {
-    return actionButton("Survey", "survey-system", { system: system.id }, !canSurvey(system, fleet), "primary");
+    return actionButton("Survey", "survey-system", { system: system.id }, !canSurvey(system, fleet), "primary", "No resource cost");
   }
   if (fleet.role === "constructor") {
     return `
-      ${actionButton("Outpost", "build-outpost", { system: system.id }, !canBuildOutpost(system, fleet), "primary")}
-      ${actionButton("Mining Station", "build-mining", { system: system.id }, !canBuildMining(system, fleet), "")}
-      ${actionButton("Research Station", "build-research", { system: system.id }, !canBuildResearch(system, fleet), "")}
-      ${actionButton("Colonize", "colonize", { system: system.id }, !canColonize(system, fleet), "primary")}
+      ${actionButton("Outpost", "build-outpost", { system: system.id }, !canBuildOutpost(system, fleet), "primary", costText(getOutpostCost()))}
+      ${actionButton("Mining Station", "build-mining", { system: system.id }, !canBuildMining(system, fleet), "", costText(getStationCost("mining")))}
+      ${actionButton("Research Station", "build-research", { system: system.id }, !canBuildResearch(system, fleet), "", costText(getStationCost("research")))}
+      ${actionButton("Colonize", "colonize", { system: system.id }, !canColonize(system, fleet), "primary", costText(getColonizeCost()))}
     `;
   }
   if (fleet.role === "navy") {
-    return actionButton("Attack", "attack-system", { system: system.id }, !canAttack(system, fleet), "danger");
+    return actionButton("Attack", "attack-system", { system: system.id }, !canAttack(system, fleet), "danger", "No resource cost");
   }
   return "";
 }
@@ -3282,20 +3947,29 @@ function renderColonyBlock(system) {
       </div>
       <div class="action-grid">
         ${Object.entries(PLANET_BUILDS)
-          .map(([key, build]) =>
-            actionButton(build.label, "build-planet", { system: system.id, building: key }, !canAfford(build.cost), "")
-          )
+          .map(([key, build]) => {
+            const locked = isBuildLocked(build);
+            return actionButton(
+              build.label,
+              "build-planet",
+              { system: system.id, building: key },
+              locked || !canAfford(build.cost),
+              "",
+              locked ? requirementLabel(build.requires) : `${costText(build.cost)} - ${build.months} months`
+            );
+          })
           .join("")}
       </div>
     </div>
   `;
 }
 
-function actionButton(label, action, data, disabled, tone = "") {
+function actionButton(label, action, data, disabled, tone = "", title = "") {
   const attrs = Object.entries(data)
     .map(([key, value]) => `data-${key}="${escapeHtml(value)}"`)
     .join(" ");
-  return `<button class="action-button ${tone}" data-action="${action}" ${attrs} ${disabled ? "disabled" : ""}>${escapeHtml(label)}</button>`;
+  const titleAttr = title ? `title="${escapeHtml(title)}"` : "";
+  return `<button class="action-button ${tone}" data-action="${action}" ${attrs} ${titleAttr} ${disabled ? "disabled" : ""}>${escapeHtml(label)}</button>`;
 }
 
 function canBuildMining(system, fleet = selectedFleet()) {
@@ -3308,7 +3982,7 @@ function canBuildMining(system, fleet = selectedFleet()) {
       fleet?.owner === "player" &&
       fleet.role === "constructor" &&
       fleet.order === "idle" &&
-      canAfford({ minerals: 86 }) &&
+      canAfford(getStationCost("mining")) &&
       routeBetween(fleet.location, system.id, "player")
   );
 }
@@ -3323,13 +3997,13 @@ function canBuildResearch(system, fleet = selectedFleet()) {
       fleet?.owner === "player" &&
       fleet.role === "constructor" &&
       fleet.order === "idle" &&
-      canAfford({ minerals: 104 }) &&
+      canAfford(getStationCost("research")) &&
       routeBetween(fleet.location, system.id, "player")
   );
 }
 
 function canColonize(system, fleet = null) {
-  const cost = scaledCost({ energy: 110, minerals: 185, influence: 36 }, 1 + state.modifiers.colonyCost);
+  const cost = getColonizeCost();
   return Boolean(
     system &&
       system.owner === "player" &&
@@ -3373,14 +4047,14 @@ function renderDiplomacy() {
             </div>
             <span class="mini-tag" style="border-color:${color}; color:${color}">${contact.war ? "War" : relation > 20 ? "Warm" : relation < -35 ? "Tense" : "Neutral"}</span>
             <div class="contact-actions">
-              <button class="ghost-button" data-action="embassy" data-empire="${empire.id}" ${contact.war ? "disabled" : ""}>Embassy</button>
-              <button class="ghost-button" data-action="rival" data-empire="${empire.id}" ${contact.war ? "disabled" : ""}>Rival</button>
+              <button class="ghost-button" data-action="embassy" data-empire="${empire.id}" title="${escapeHtml(costText(getEmbassyCost()))}" ${contact.war ? "disabled" : ""}>Embassy</button>
+              <button class="ghost-button" data-action="rival" data-empire="${empire.id}" title="Gain 35 influence" ${contact.war ? "disabled" : ""}>Rival</button>
               ${
                 contact.war
-                  ? `<button class="ghost-button" data-action="truce" data-empire="${empire.id}">Truce</button>`
+                  ? `<button class="ghost-button" data-action="truce" data-empire="${empire.id}" title="No resource cost">Truce</button>`
                   : `<button class="ghost-button" data-action="declare-war" data-empire="${empire.id}" ${
                       contact.truce ? "disabled" : ""
-                    }>War</button>`
+                    } title="No resource cost">War</button>`
               }
             </div>
           </div>
@@ -3954,6 +4628,38 @@ function drawInfrastructureShape(type, size) {
     ctx.fillRect(s * 0.22, -s * 0.18, s * 0.2, s * 0.58);
     return;
   }
+  if (type === "hydroponics") {
+    ctx.save();
+    ctx.rotate(-0.55);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, s * 0.42, s * 0.24, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+  if (type === "tradeHub") {
+    ctx.beginPath();
+    ctx.moveTo(0, -s * 0.48);
+    ctx.lineTo(s * 0.48, 0);
+    ctx.lineTo(0, s * 0.48);
+    ctx.lineTo(-s * 0.48, 0);
+    ctx.closePath();
+    ctx.fill();
+    return;
+  }
+  if (type === "fortress") {
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.42, -s * 0.45);
+    ctx.lineTo(-s * 0.18, -s * 0.26);
+    ctx.lineTo(0, -s * 0.45);
+    ctx.lineTo(s * 0.18, -s * 0.26);
+    ctx.lineTo(s * 0.42, -s * 0.45);
+    ctx.lineTo(s * 0.42, s * 0.42);
+    ctx.lineTo(-s * 0.42, s * 0.42);
+    ctx.closePath();
+    ctx.fill();
+    return;
+  }
   ctx.beginPath();
   ctx.arc(0, 0, s * 0.32, 0, Math.PI * 2);
   ctx.fill();
@@ -4200,7 +4906,7 @@ function zoomAt(screenX, screenY, factor) {
   state.camera.y += before.y - after.y;
 }
 
-function selectNearest(screenX, screenY) {
+function selectNearestFleet(screenX, screenY) {
   let bestFleet = null;
   for (const fleet of state.fleets) {
     if (!fleetVisible(fleet)) continue;
@@ -4217,7 +4923,9 @@ function selectNearest(screenX, screenY) {
     updateUI();
     return;
   }
+}
 
+function selectNearestSystem(screenX, screenY) {
   const world = screenToWorld(screenX, screenY);
   let best = null;
   for (const system of state.systems) {
@@ -4260,6 +4968,11 @@ function handleAction(action, target) {
   }
   if (action === "zoom-in") return zoomAt(viewport.width / 2, viewport.height / 2, 1.18);
   if (action === "zoom-out") return zoomAt(viewport.width / 2, viewport.height / 2, 0.84);
+  if (action === "toggle-icon-key") {
+    state.iconKeyOpen = !state.iconKeyOpen;
+    updateUI();
+    return;
+  }
   if (action === "select-fleet") {
     state.selectedFleetId = data.fleet;
     const fleet = selectedFleet();
@@ -4286,6 +4999,7 @@ function handleAction(action, target) {
   }
   if (action === "move-selected-fleet") return commandMoveSelectedFleet(Number(data.system));
   if (action === "return-fleet") return commandReturnSelectedFleet();
+  if (action === "split-fleet") return commandSplitFleet();
   if (action === "hold-fleet") return commandHoldSelectedFleet();
   if (action === "survey-system") return commandSurvey(Number(data.system));
   if (action === "build-outpost") return commandBuildOutpost(Number(data.system));
@@ -4329,13 +5043,25 @@ function bindEvents() {
       return;
     }
     const action = event.target.closest("[data-action]");
+    if (action?.dataset.action === "select-body") return;
     if (action && !action.disabled) handleAction(action.dataset.action, action);
   });
 
+  document.addEventListener("contextmenu", (event) => {
+    const body = event.target.closest('[data-action="select-body"]');
+    if (body) {
+      event.preventDefault();
+      handleAction("select-body", body);
+      return;
+    }
+  });
+
   canvas.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
     canvas.setPointerCapture(event.pointerId);
     pointer = {
       id: event.pointerId,
+      button: event.button,
       x: event.clientX,
       y: event.clientY,
       startX: event.clientX,
@@ -4361,9 +5087,15 @@ function bindEvents() {
     if (!pointer || pointer.id !== event.pointerId) return;
     if (!pointer.dragging) {
       const rect = canvas.getBoundingClientRect();
-      selectNearest(event.clientX - rect.left, event.clientY - rect.top);
+      selectNearestFleet(event.clientX - rect.left, event.clientY - rect.top);
     }
     pointer = null;
+  });
+
+  canvas.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    selectNearestSystem(event.clientX - rect.left, event.clientY - rect.top);
   });
 
   canvas.addEventListener(
