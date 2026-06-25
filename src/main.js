@@ -68,6 +68,15 @@ const SUPABASE_PROJECT_URL = "https://vdurhudczavpcyehekhc.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_iaqIpxCtKt7Ad2CMcF_O5A_0R0bxOid";
 const SUPABASE_ANON_KEY_STORAGE = "stellarSupabaseAnonKey";
 const MULTIPLAYER_TABLE = "stellar_lobbies";
+const MAP_TEXTURE_SOURCES = [
+  { id: "nebula", src: "assets/space/nebula-carina.jpg" },
+  { id: "gas", src: "assets/space/gas-horsehead.jpg" },
+  { id: "stars", src: "assets/space/stars-cluster.jpg" },
+  { id: "galaxy", src: "assets/space/galaxy-spiral.jpg" },
+  { id: "star", src: "assets/space/star-sun.jpg" },
+];
+const GALACTIC_CORE_EXCLUSION = 128;
+const TAU = Math.PI * 2;
 const RESOURCE_META = {
   energy: { label: "Energy", color: "#f2b84b" },
   minerals: { label: "Minerals", color: "#9bd389" },
@@ -974,6 +983,37 @@ const STRATEGIC_PROGRAMS = [
     duration: 16,
     effects: { trade: 0.24, cohesion: -0.03, influenceOutput: 0.04 },
     text: "Boosts trade and influence output while slightly stressing cohesion.",
+  },
+];
+
+const UNION_POLICIES = [
+  {
+    id: "open-bourses",
+    label: "Open Bourses",
+    text: "Union markets lower internal tolls and make trade routes richer.",
+    effects: { trade: 0.28, diplomacyCost: -0.05, security: -0.04 },
+    duration: 30,
+  },
+  {
+    id: "mutual-defense",
+    label: "Mutual Defense",
+    text: "Shared patrol standards improve defense and fleet morale.",
+    effects: { starbaseDefense: 2, fleetMorale: 0.08, trade: -0.04 },
+    duration: 30,
+  },
+  {
+    id: "science-commons",
+    label: "Science Commons",
+    text: "Open archives accelerate research administration across member states.",
+    effects: { researchAdmin: 0.12, unity: -0.04, anomalySafety: 0.06 },
+    duration: 28,
+  },
+  {
+    id: "migration-charter",
+    label: "Migration Charter",
+    text: "Civilian mobility improves colony growth while testing cohesion.",
+    effects: { growth: 0.1, trade: 0.12, cohesion: -0.04 },
+    duration: 26,
   },
 ];
 
@@ -2053,9 +2093,21 @@ const oneDecimal = (value) => (Math.round(value * 10) / 10).toFixed(1);
 
 let state;
 let lastFrame = 0;
+let lastRenderTime = 0;
 let dpr = 1;
 let viewport = { width: 1, height: 1 };
 let pointer = null;
+const mapAssets = {
+  textures: Object.fromEntries(MAP_TEXTURE_SOURCES.map((asset) => [asset.id, loadMapImage(asset.src)])),
+};
+
+function loadMapImage(src) {
+  if (typeof Image === "undefined") return null;
+  const image = new Image();
+  image.decoding = "async";
+  image.src = src;
+  return image;
+}
 
 function escapeHtml(value) {
   return String(value)
@@ -2282,6 +2334,9 @@ function newGame(seed = Date.now(), galaxySettings = DEFAULT_GALAXY, options = {
     systems: [],
     fleets: [],
     backgroundStars: [],
+    backgroundNebulae: [],
+    tradeRoutes: [],
+    civilianRoutes: [],
     resources: createEmptyResources({
       energy: 360,
       minerals: 320,
@@ -2346,6 +2401,11 @@ function newGame(seed = Date.now(), galaxySettings = DEFAULT_GALAXY, options = {
     tech: { known: [], active: null, progress: 0, choices: [], queue: [] },
     empires: {},
     contacts: {},
+    union: {
+      members: ["player"],
+      activePolicy: null,
+      voteHistory: [],
+    },
     piratesSpawned: 0,
     iconKeyOpen: false,
     multiplayer: {
@@ -2392,6 +2452,9 @@ function newGame(seed = Date.now(), galaxySettings = DEFAULT_GALAXY, options = {
       exhaustion: 0,
       playerClaims: 0,
       truce: 0,
+      tradePact: false,
+      alliance: false,
+      union: false,
     };
   }
 
@@ -2406,6 +2469,7 @@ function newGame(seed = Date.now(), galaxySettings = DEFAULT_GALAXY, options = {
   addLog("Science Vessel Meridian and Constructor Dauntless await orders.", "science");
   updateKnownFromBorders();
   discoverContacts();
+  refreshTradeRoutes();
   updateUI();
 }
 
@@ -2430,13 +2494,14 @@ function generateGalaxy() {
     return fallback;
   }
 
-  systems.push(createSystem(0, nextName("Aurelia"), 0, 0, true));
+  const homePoint = playerHomePoint();
+  systems.push(createSystem(0, nextName("Aurelia"), homePoint.x, homePoint.y, true));
 
   const count = state.galaxy.count;
   for (let i = 1; i < count; i++) {
     let point = null;
     for (let attempt = 0; attempt < 18; attempt++) {
-      point = galaxyPoint(i, count);
+      point = keepOutOfGalacticCore(galaxyPoint(i, count), i);
       const nearest = systems.reduce((best, system) => Math.min(best, Math.hypot(system.x - point.x, system.y - point.y)), Infinity);
       if (nearest > 58 || attempt === 17) break;
     }
@@ -2450,6 +2515,9 @@ function generateGalaxy() {
   createBackgroundStars();
   state.selectedSystemId = state.empires.player.homeSystemId;
   state.selectedBodyId = preferredBodyId(state.systems[state.selectedSystemId]);
+  const home = state.systems[state.selectedSystemId];
+  state.camera.x = home.x;
+  state.camera.y = home.y;
 }
 
 function applyScenarioStart(scenarioId) {
@@ -2500,6 +2568,29 @@ function applyScenarioStart(scenarioId) {
     }
     addLog("Envoys report that nearby polities already know the Commonwealth by reputation.", "major");
   }
+}
+
+function playerHomePoint() {
+  const scale = state.galaxy.scale;
+  const radius = scale * randRange(0.38, 0.52);
+  const angle = randRange(0.18, TAU - 0.18);
+  const armBias = Math.sin(angle * 2 + state.seed * 0.00013) * scale * 0.035;
+  return {
+    x: Math.cos(angle) * radius + Math.cos(angle + Math.PI / 2) * armBias,
+    y: Math.sin(angle) * radius + Math.sin(angle + Math.PI / 2) * armBias,
+  };
+}
+
+function keepOutOfGalacticCore(point, index = 0) {
+  const minimum = Math.min(state.galaxy.scale * 0.32, GALACTIC_CORE_EXCLUSION);
+  const distance = Math.hypot(point.x, point.y);
+  if (distance >= minimum) return point;
+  const angle = distance > 0.1 ? Math.atan2(point.y, point.x) : ((index + 1) / Math.max(1, state.galaxy.count)) * TAU;
+  const radius = minimum + randRange(18, state.galaxy.scale * 0.12);
+  return {
+    x: Math.cos(angle) * radius,
+    y: Math.sin(angle) * radius,
+  };
 }
 
 function galaxyPoint(index, count) {
@@ -2623,6 +2714,30 @@ function rotatePoint(x, y, angle) {
   };
 }
 
+function createSystemOrbit(x, y, id) {
+  const radius = Math.max(1, Math.hypot(x, y));
+  const distanceFactor = clamp(radius / Math.max(1, state.galaxy.scale), 0, 1.4);
+  const speed = 0.0000048 + (1 - Math.min(1, distanceFactor)) * 0.0000072 + state.rng() * 0.0000012;
+  return {
+    radius,
+    angle: Math.atan2(y, x),
+    speed,
+    drift: radius * randRange(0.004, 0.014),
+    driftPhase: state.rng() * TAU + id * 0.37,
+  };
+}
+
+function systemVisualPosition(system, time = lastRenderTime) {
+  if (!system?.orbit) return { x: system?.x || 0, y: system?.y || 0 };
+  const wobble = Math.sin(time * 0.00012 + system.orbit.driftPhase) * system.orbit.drift;
+  const radius = Math.max(GALACTIC_CORE_EXCLUSION * 0.7, system.orbit.radius + wobble);
+  const angle = system.orbit.angle + time * system.orbit.speed;
+  return {
+    x: Math.cos(angle) * radius,
+    y: Math.sin(angle) * radius,
+  };
+}
+
 function createSystem(id, name, x, y, isHome) {
   const star = isHome
     ? STAR_CLASSES[2]
@@ -2688,6 +2803,7 @@ function createSystem(id, name, x, y, isHome) {
     anomaly: state.rng() < 0.24 ? pick(anomalyTypes) : null,
     anomalyResolved: false,
     danger: state.rng() < 0.08 ? Math.floor(randRange(4, 12)) : 0,
+    orbit: createSystemOrbit(x, y, id),
   };
 }
 
@@ -2984,6 +3100,21 @@ function createFleets() {
 }
 
 function createBackgroundStars() {
+  state.backgroundNebulae = [];
+  for (let i = 0; i < Math.max(8, Math.round(state.galaxy.count / 28)); i++) {
+    const radius = Math.sqrt(state.rng()) * state.galaxy.scale * 1.08 + GALACTIC_CORE_EXCLUSION * 0.6;
+    const theta = state.rng() * TAU;
+    state.backgroundNebulae.push({
+      x: Math.cos(theta) * radius,
+      y: Math.sin(theta) * radius,
+      radius: randRange(state.galaxy.scale * 0.11, state.galaxy.scale * 0.26),
+      color: pick(["#4fd1d8", "#ad8cff", "#f2b84b", "#df709b", "#67d38f"]),
+      alpha: randRange(0.035, 0.09),
+      drift: randRange(-0.000006, 0.000006),
+      phase: state.rng() * TAU,
+    });
+  }
+
   for (let i = 0; i < state.galaxy.background; i++) {
     const radius = Math.sqrt(state.rng()) * state.galaxy.scale * 1.38;
     const theta = state.rng() * Math.PI * 2;
@@ -3161,6 +3292,10 @@ function processTimedModifiers() {
     applyModifierEffects(modifier.effects, -1);
     addLog(`${modifier.label} expires.`);
   }
+  if (state.union.activePolicy && state.month >= state.union.activePolicy.expires) {
+    addLog(`${state.union.activePolicy.label} lapses in the Aureate Union.`);
+    state.union.activePolicy = null;
+  }
 }
 
 function updateKnownFromBorders() {
@@ -3256,6 +3391,7 @@ function tickMonth() {
   state.month += 1;
 
   processTimedModifiers();
+  refreshTradeRoutes();
   processIncome();
   processResearch();
   processBuildQueue();
@@ -3341,6 +3477,11 @@ function computeIncome(owner) {
     income.unity += colonies * state.modifiers.trade * 0.35;
   }
 
+  const tradeStats = tradeStatsForOwner(owner);
+  income.energy += tradeStats.energy;
+  income.unity += tradeStats.unity;
+  income.influence += tradeStats.influence;
+
   if (isPlayer) {
     const ratings = getEmpireRatings(owner);
     const cohesionEffect = clamp((ratings.cohesion - 82) / 520, -0.14, 0.14);
@@ -3382,6 +3523,129 @@ function computeIncome(owner) {
     income[key] = Math.round(income[key] * 10) / 10;
   }
   return income;
+}
+
+function refreshTradeRoutes() {
+  if (!state?.systems?.length) return;
+  state.tradeRoutes = buildTradeRoutes();
+  state.civilianRoutes = state.tradeRoutes.filter((route) => route.value >= 2.6 || route.colonizableStops.length);
+}
+
+function buildTradeRoutes() {
+  const routes = [];
+  const capitalId = state.empires.player.homeSystemId;
+  const capital = state.systems[capitalId];
+  if (!capital) return routes;
+
+  const playerSystems = state.systems.filter((system) => system.owner === "player");
+  const internalTargets = playerSystems
+    .filter((system) => system.id !== capitalId && (system.colony || system.stations.shipyard || system.colony?.buildings.tradeHub))
+    .sort((a, b) => tradeDestinationScore(b) - tradeDestinationScore(a))
+    .slice(0, Math.max(4, Math.round(playerSystems.length / 3)));
+
+  for (const target of internalTargets) {
+    const path = findTradePath(capitalId, target.id);
+    if (path) routes.push(createTradeRoute("player", null, "internal", capitalId, target.id, path));
+  }
+
+  for (const [empireId, contact] of Object.entries(state.contacts)) {
+    if (!contact.met || contact.war || (!contact.tradePact && !contact.alliance && !contact.union)) continue;
+    const homeId = state.empires[empireId]?.homeSystemId;
+    if (homeId === null || homeId === undefined) continue;
+    const path = findTradePath(capitalId, homeId);
+    if (path) routes.push(createTradeRoute("player", empireId, contact.union ? "union" : contact.alliance ? "alliance" : "trade", capitalId, homeId, path));
+  }
+
+  return routes;
+}
+
+function tradeDestinationScore(system) {
+  return (
+    (system.colony ? 8 + system.colony.pops * 0.35 : 0) +
+    (system.colony?.buildings.tradeHub || 0) * 8 +
+    (system.stations.shipyard ? 5 : 0) +
+    system.deposits.energy * 0.5 +
+    system.deposits.research * 0.3
+  );
+}
+
+function findTradePath(startId, endId) {
+  if (startId === endId) return [startId];
+  const queue = [startId];
+  const seen = new Set([startId]);
+  const parent = new Map();
+  while (queue.length) {
+    const current = queue.shift();
+    for (const next of state.systems[current].hyperlanes) {
+      if (seen.has(next)) continue;
+      const nextSystem = state.systems[next];
+      if (!tradePathAllows(nextSystem, next, endId)) continue;
+      seen.add(next);
+      parent.set(next, current);
+      if (next === endId) {
+        const path = [endId];
+        let cursor = endId;
+        while (parent.has(cursor)) {
+          cursor = parent.get(cursor);
+          path.push(cursor);
+        }
+        return path.reverse();
+      }
+      queue.push(next);
+    }
+  }
+  return null;
+}
+
+function tradePathAllows(system, systemId, endId) {
+  if (systemId === endId) return true;
+  if (system.owner && system.owner !== "player" && state.contacts[system.owner]?.war) return false;
+  return Boolean(system.known || system.surveyedBy.player || system.owner === "player" || (system.owner && state.contacts[system.owner]?.met));
+}
+
+function createTradeRoute(owner, partner, kind, fromId, toId, path) {
+  const toSystem = state.systems[toId];
+  const colonizableStops = path
+    .map((id) => state.systems[id])
+    .filter((system) => system.id !== fromId && system.id !== toId && system.planet && !system.colony && (system.surveyedBy.player || system.known));
+  const routeHubBonus = path.reduce((sum, id) => sum + (state.systems[id].colony?.buildings.tradeHub || 0), 0) * 0.42;
+  const treatyBonus = kind === "union" ? 1.25 : kind === "alliance" ? 0.95 : kind === "trade" ? 0.65 : 0;
+  const colonyBonus = toSystem.colony ? toSystem.colony.pops * 0.08 : 0;
+  const value = Math.max(0.8, 1.2 + treatyBonus + routeHubBonus + colonyBonus + colonizableStops.length * 0.34 - Math.max(0, path.length - 4) * 0.08);
+  return {
+    id: `${kind}-${fromId}-${toId}-${partner || "local"}`,
+    owner,
+    partner,
+    kind,
+    fromId,
+    toId,
+    path,
+    value,
+    colonizableStops: colonizableStops.map((system) => system.id),
+  };
+}
+
+function tradeStatsForOwner(owner) {
+  const routes = state.tradeRoutes || [];
+  const relevant = routes.filter((route) => route.owner === owner || route.partner === owner);
+  const value = relevant.reduce((sum, route) => sum + route.value, 0);
+  const unionValue = relevant.filter((route) => route.kind === "union").reduce((sum, route) => sum + route.value, 0);
+  return {
+    value,
+    routeCount: relevant.length,
+    energy: value * 0.9,
+    unity: value * 0.16,
+    influence: unionValue * 0.035,
+  };
+}
+
+function systemTradeSignificance(system) {
+  const routes = state.tradeRoutes || [];
+  return routes.reduce((sum, route) => {
+    if (!route.path.includes(system.id)) return sum;
+    const colonizable = route.colonizableStops.includes(system.id);
+    return sum + route.value * (colonizable ? 0.8 : 0.22);
+  }, 0);
 }
 
 function getEmpireSprawl(owner) {
@@ -4055,7 +4319,8 @@ function processDiplomaticDrift(empire) {
   const playerPower = getFleetPower("player") + getOwnedDefense("player") * 0.2;
   const aiPower = getFleetPower(empire.id) + getOwnedDefense(empire.id) * 0.2;
   const powerFear = aiPower > playerPower * 1.25 ? -0.3 : 0.18;
-  contact.relation = clamp(contact.relation + empire.attitude * 0.01 - border * 0.12 + powerFear, -100, 100);
+  const treatyTrust = (contact.tradePact ? 0.08 : 0) + (contact.alliance ? 0.14 : 0) + (contact.union ? 0.18 : 0);
+  contact.relation = clamp(contact.relation + empire.attitude * 0.01 - border * (contact.alliance ? 0.04 : 0.12) + powerFear + treatyTrust, -100, 100);
 
   if (contact.war) {
     contact.exhaustion = clamp(contact.exhaustion + 0.65 + border * 0.1, 0, 100);
@@ -4063,6 +4328,8 @@ function processDiplomaticDrift(empire) {
   }
 
   const wantsWar =
+    !contact.alliance &&
+    !contact.union &&
     contact.truce <= 0 &&
     contact.relation < -72 &&
     border > 0 &&
@@ -4105,7 +4372,8 @@ function scoreSystemForEmpire(system) {
   const deposits = system.deposits.energy + system.deposits.minerals * 1.15 + system.deposits.research * 1.2;
   const planet = system.planet ? 8 + system.planet.size * 0.35 + system.planet.habitability * 13 : 0;
   const danger = system.danger * 0.6;
-  return deposits + planet - danger;
+  const trade = systemTradeSignificance(system) * (system.planet && !system.colony ? 1.2 : 0.35);
+  return deposits + planet + trade - danger;
 }
 
 function borderFriction(empireId) {
@@ -4219,32 +4487,6 @@ function distanceToPlayer(system) {
 
 function checkVictory() {
   if (state.victory) return;
-  const playerSystems = state.systems.filter((system) => system.owner === "player").length;
-  const playerColonies = state.systems.filter((system) => system.colony?.owner === "player").length;
-  const rivalsWithCapitals = state.aiTemplates.filter((template) => {
-    const homeId = state.empires[template.id].homeSystemId;
-    return state.systems[homeId]?.owner === template.id;
-  });
-
-  if (playerSystems >= 34 || playerColonies >= 8 || rivalsWithCapitals.length === 0) {
-    state.victory = { ended: false };
-    state.running = false;
-    openDecision({
-      kicker: "Victory",
-      title: "The Commonwealth Ascendant",
-      text: "Your polity has become the central power of this spiral arm through expansion, colonization, and force projection.",
-      options: [
-        {
-          label: "Continue",
-          text: "Remain in command.",
-          effect: () => {
-            state.victory.ended = false;
-          },
-        },
-      ],
-    });
-  }
-
   const home = state.systems[state.empires.player.homeSystemId];
   if (home.owner !== "player") {
     state.victory = { ended: true };
@@ -4261,7 +4503,175 @@ function checkVictory() {
         },
       ],
     });
+    return;
   }
+
+  const victory = scenarioVictoryStatus();
+  if (!victory.complete) return;
+  state.victory = { ended: false, scenario: state.galaxy.scenario };
+  state.running = false;
+  openDecision({
+    kicker: "Victory",
+    title: victory.title,
+    text: victory.text,
+    options: [
+      {
+        label: "Continue",
+        text: "Remain in command.",
+        effect: () => {
+          state.victory.ended = false;
+        },
+      },
+    ],
+  });
+}
+
+function scenarioVictoryStatus() {
+  const metrics = victoryMetrics();
+  const scenario = state.galaxy.scenario;
+  const targets = victoryTargets();
+  let title = "The Commonwealth Ascendant";
+  let text = "Your polity has become the central power of this spiral arm.";
+  let goals = [];
+  let complete = false;
+
+  if (scenario === "frontier") {
+    title = "Frontier Mandate Complete";
+    text = "The Commonwealth has charted and anchored a viable frontier sphere.";
+    goals = [
+      victoryGoal("Surveyed systems", metrics.surveyed, targets.frontierSurvey),
+      victoryGoal("Controlled systems", metrics.systems, targets.frontierSystems),
+      victoryGoal("Colonies founded", metrics.colonies, targets.frontierColonies),
+    ];
+    complete = goals[0].complete && goals[1].complete && goals[2].complete;
+  } else if (scenario === "siege") {
+    title = "Perimeter Secured";
+    text = "Hostile powers can no longer crack the Commonwealth perimeter.";
+    goals = [
+      victoryGoal("Rival capitals neutralized", metrics.defeatedRivals, targets.siegeDefeats),
+      victoryGoal("Fleet supremacy", metrics.fleetPower, targets.siegeFleetPower),
+      victoryGoal("Owned defense network", metrics.defense, targets.siegeDefense),
+    ];
+    complete = goals[0].complete || (goals[1].complete && goals[2].complete);
+  } else if (scenario === "relic") {
+    title = "Relic Mandate Fulfilled";
+    text = "The archive program has become a new scientific orthodoxy.";
+    goals = [
+      victoryGoal("Research completed", metrics.research, targets.relicResearch),
+      victoryGoal("Anomalies resolved", metrics.anomalies, targets.relicAnomalies),
+      victoryGoal("Surveyed systems", metrics.surveyed, targets.relicSurvey),
+    ];
+    complete = goals[0].complete && goals[1].complete && goals[2].complete;
+  } else if (scenario === "scarcity") {
+    title = "Lean-Star Recovery";
+    text = "A resource-starved start has been converted into durable prosperity.";
+    goals = [
+      victoryGoal("Strategic stockpile", metrics.stockpile, targets.scarcityStockpile),
+      victoryGoal("Monthly income", metrics.monthlyIncome, targets.scarcityIncome),
+      victoryGoal("Stable colonies", metrics.colonies, targets.scarcityColonies),
+    ];
+    complete = goals.every((goal) => goal.complete);
+  } else if (scenario === "crowded") {
+    title = "Crowded Arm Settlement";
+    text = "Diplomacy and commerce have bound the contested arm into Commonwealth-led order.";
+    goals = [
+      victoryGoal("Allies or union members", Math.max(metrics.alliances, metrics.unionMembers), targets.crowdedPartners),
+      victoryGoal("Trade route value", metrics.tradeValue, targets.crowdedTrade),
+      victoryGoal("Confirmed contacts", metrics.contacts, targets.crowdedContacts),
+    ];
+    complete = goals.every((goal) => goal.complete);
+  } else {
+    goals = [
+      victoryGoal("Controlled systems", metrics.systems, targets.standardSystems),
+      victoryGoal("Colonies founded", metrics.colonies, targets.standardColonies),
+      victoryGoal("Rival capitals neutralized", metrics.defeatedRivals, targets.standardDefeats),
+    ];
+    complete = goals.some((goal) => goal.complete);
+  }
+
+  if (metrics.remainingRivalCapitals === 0 && state.aiTemplates.length > 0) {
+    complete = true;
+    text = "Every rival capital has been neutralized. The remaining powers accept Commonwealth primacy.";
+  }
+
+  return {
+    title,
+    text,
+    goals,
+    complete,
+    progress: goals.length ? Math.max(...goals.map((goal) => goal.progress)) : 0,
+  };
+}
+
+function victoryMetrics() {
+  const playerSystems = state.systems.filter((system) => system.owner === "player");
+  const playerColonies = state.systems.filter((system) => system.colony?.owner === "player");
+  const rivalsWithCapitals = state.aiTemplates.filter((template) => {
+    const homeId = state.empires[template.id].homeSystemId;
+    return state.systems[homeId]?.owner === template.id;
+  });
+  const income = state.lastIncome || createEmptyResources();
+  const monthlyIncome = income.energy + income.minerals + income.alloys * 2 + income.influence * 8 + income.unity + income.research * 0.3;
+  const stockpile =
+    state.resources.energy +
+    state.resources.minerals +
+    state.resources.alloys * 2 +
+    state.resources.influence * 8 +
+    state.resources.unity * 1.5;
+  const tradeStats = tradeStatsForOwner("player");
+  return {
+    systems: playerSystems.length,
+    colonies: playerColonies.length,
+    surveyed: state.systems.filter((system) => system.surveyedBy.player).length,
+    anomalies: state.systems.filter((system) => system.anomalyResolved).length,
+    research: state.tech.known.length,
+    defeatedRivals: state.aiTemplates.length - rivalsWithCapitals.length,
+    remainingRivalCapitals: rivalsWithCapitals.length,
+    fleetPower: getFleetPower("player"),
+    defense: getOwnedDefense("player"),
+    stockpile,
+    monthlyIncome,
+    alliances: Object.values(state.contacts).filter((contact) => contact.alliance).length,
+    unionMembers: state.union.members.length,
+    tradeValue: tradeStats.value,
+    contacts: Object.values(state.contacts).filter((contact) => contact.met).length,
+  };
+}
+
+function victoryTargets() {
+  const systems = state.galaxy.count;
+  const ai = Math.max(1, state.aiTemplates.length);
+  const strongestAiPower = Math.max(10, ...state.aiTemplates.map((template) => getFleetPower(template.id)));
+  return {
+    standardSystems: Math.max(10, Math.round(systems * 0.28)),
+    standardColonies: Math.max(3, Math.ceil(systems / 20)),
+    standardDefeats: Math.max(1, Math.ceil(ai * 0.5)),
+    frontierSurvey: Math.max(8, Math.round(systems * 0.42)),
+    frontierSystems: Math.max(7, Math.round(systems * 0.18)),
+    frontierColonies: Math.max(2, Math.ceil(systems / 48)),
+    siegeDefeats: Math.max(1, Math.ceil(ai * 0.45)),
+    siegeFleetPower: Math.round(strongestAiPower * 1.25),
+    siegeDefense: Math.max(42, Math.round(30 + ai * 9 + systems * 0.05)),
+    relicResearch: Math.max(7, Math.round(systems / 26) + ai),
+    relicAnomalies: Math.max(2, Math.ceil(systems * 0.035)),
+    relicSurvey: Math.max(8, Math.round(systems * 0.3)),
+    scarcityStockpile: Math.round(520 + systems * 4.2 + ai * 120),
+    scarcityIncome: Math.round(34 + systems * 0.08 + ai * 1.4),
+    scarcityColonies: Math.max(2, Math.ceil(systems / 58)),
+    crowdedPartners: Math.max(2, Math.ceil(ai * 0.38)),
+    crowdedTrade: Math.round((5 + ai * 1.25 + systems / 70) * 10) / 10,
+    crowdedContacts: Math.max(2, Math.ceil(ai * 0.65)),
+  };
+}
+
+function victoryGoal(label, value, target) {
+  return {
+    label,
+    value,
+    target,
+    progress: clamp(value / Math.max(1, target), 0, 1),
+    complete: value >= target,
+  };
 }
 
 function canAfford(cost, owner = "player") {
@@ -4316,8 +4726,9 @@ function selectSystem(systemId, center = true) {
   state.selectedBodyId = preferredBodyId(system);
   state.rightMenu = "system";
   if (center) {
-    state.camera.x = system.x;
-    state.camera.y = system.y;
+    const position = systemVisualPosition(system);
+    state.camera.x = position.x;
+    state.camera.y = position.y;
   }
   updateUI();
 }
@@ -4834,6 +5245,10 @@ function declareWar(empireId, playerStarted = true) {
   contact.met = true;
   contact.war = true;
   contact.exhaustion = 0;
+  contact.tradePact = false;
+  contact.alliance = false;
+  contact.union = false;
+  state.union.members = state.union.members.filter((id) => id !== empireId);
   contact.relation = clamp(contact.relation - (playerStarted ? 28 : 18), -100, 100);
   addLog(
     `${playerStarted ? "The Commonwealth declares war on" : state.empires[empireId].name + " declares war on"} ${
@@ -4857,6 +5272,113 @@ function improveRelations(empireId) {
 
 function getEmbassyCost() {
   return scaledCost({ influence: 28, unity: 35 }, 1 + state.modifiers.diplomacyCost);
+}
+
+function getTreatyCost(type) {
+  const base =
+    type === "trade"
+      ? { influence: 18, energy: 70 }
+      : type === "alliance"
+        ? { influence: 46, unity: 42 }
+        : { influence: 68, unity: 80 };
+  return scaledCost(base, 1 + state.modifiers.diplomacyCost);
+}
+
+function commandTradePact(empireId) {
+  const contact = state.contacts[empireId];
+  const cost = getTreatyCost("trade");
+  if (!contact?.met || contact.war || contact.tradePact || contact.relation < 4 || !canAfford(cost)) return toast("Trade pact requirements are not met.");
+  spend(cost);
+  contact.tradePact = true;
+  contact.relation = clamp(contact.relation + 8, -100, 100);
+  refreshTradeRoutes();
+  addLog(`Trade pact signed with the ${state.empires[empireId].name}.`, "major");
+  updateUI();
+}
+
+function commandAlliance(empireId) {
+  const contact = state.contacts[empireId];
+  const cost = getTreatyCost("alliance");
+  if (!contact?.met || contact.war || contact.alliance || contact.relation < 42 || !canAfford(cost)) return toast("Alliance requirements are not met.");
+  spend(cost);
+  contact.tradePact = true;
+  contact.alliance = true;
+  contact.relation = clamp(contact.relation + 12, -100, 100);
+  refreshTradeRoutes();
+  addLog(`Mutual alliance signed with the ${state.empires[empireId].name}.`, "major");
+  updateUI();
+}
+
+function commandInviteUnion(empireId) {
+  const contact = state.contacts[empireId];
+  const cost = getTreatyCost("union");
+  if (!contact?.met || contact.war || contact.union || (contact.relation < 62 && !contact.alliance) || !canAfford(cost)) {
+    return toast("Union accession requirements are not met.");
+  }
+  spend(cost);
+  contact.tradePact = true;
+  contact.alliance = true;
+  contact.union = true;
+  if (!state.union.members.includes(empireId)) state.union.members.push(empireId);
+  contact.relation = clamp(contact.relation + 10, -100, 100);
+  refreshTradeRoutes();
+  addLog(`${state.empires[empireId].name} joins the Aureate Union.`, "major");
+  updateUI();
+}
+
+function commandProposeUnionPolicy(policyId) {
+  const policy = UNION_POLICIES.find((item) => item.id === policyId);
+  if (!policy || state.union.members.length < 2) return toast("A union needs another member before it can vote.");
+  if (state.union.activePolicy?.id === policy.id) return toast(`${policy.label} is already active.`);
+  const cost = scaledCost({ influence: 24, unity: 24 }, 1 + state.modifiers.diplomacyCost);
+  if (!canAfford(cost)) return toast("Union vote requirements are not met.");
+  spend(cost);
+
+  const votes = state.union.members.map((memberId) => {
+    if (memberId === "player") return { memberId, support: true };
+    const contact = state.contacts[memberId];
+    const empire = state.empires[memberId];
+    const score = (contact?.relation || 0) + (empire?.attitude || 0) * 0.6 + (contact?.alliance ? 16 : 0) + randRange(-12, 18);
+    return { memberId, support: score >= 24 };
+  });
+  const support = votes.filter((vote) => vote.support).length;
+  const needed = Math.ceil(state.union.members.length * 0.55);
+  state.union.voteHistory.unshift({
+    policy: policy.label,
+    support,
+    total: votes.length,
+    passed: support >= needed,
+    month: state.month,
+  });
+  state.union.voteHistory = state.union.voteHistory.slice(0, 5);
+
+  if (support < needed) {
+    addLog(`Union vote on ${policy.label} fails ${support}-${votes.length - support}.`);
+    updateUI();
+    return;
+  }
+
+  state.union.activePolicy = {
+    id: policy.id,
+    label: policy.label,
+    text: policy.text,
+    expires: state.month + policy.duration,
+    support,
+    total: votes.length,
+  };
+  addTimedModifier({
+    id: `union-${policy.id}`,
+    label: policy.label,
+    duration: policy.duration,
+    effects: policy.effects,
+    text: modifierEffectsText(policy.effects),
+  });
+  for (const memberId of state.union.members) {
+    if (memberId !== "player" && state.contacts[memberId]) state.contacts[memberId].relation = clamp(state.contacts[memberId].relation + 4, -100, 100);
+  }
+  refreshTradeRoutes();
+  addLog(`Union vote enacts ${policy.label} ${support}-${votes.length - support}.`, "major");
+  updateUI();
 }
 
 function rivalEmpire(empireId) {
@@ -5581,9 +6103,9 @@ function renderEmpirePanel() {
     .reduce((sum, system) => sum + system.colony.pops, 0);
   const sprawl = getEmpireSprawl("player");
   const ratings = getEmpireRatings("player");
-  const victory = Math.max(systems / 34, colonies / 8);
+  const victory = scenarioVictoryStatus();
+  const tradeStats = tradeStatsForOwner("player");
   const home = state.systems[state.empires.player.homeSystemId];
-  const queue = state.buildQueue.slice(0, 5);
 
   els.empirePanel.innerHTML = `
     <div class="stat-grid">
@@ -5599,35 +6121,41 @@ function renderEmpirePanel() {
       ${stat("Security", ratings.security)}
     </div>
     <div class="small-note" style="margin-top:7px">Cohesion shapes unity and influence, logistics shapes alloy throughput, and security protects trade income.</div>
-    <div class="subhead">Ascendancy</div>
-    <div class="meter" title="Victory progress"><span style="width:${clamp(victory * 100, 4, 100)}%"></span></div>
-    <div class="small-note" style="margin-top:7px">Control 34 systems, settle 8 colonies, or take every rival capital.</div>
+    <div class="subhead">Scenario Victory</div>
+    <div class="meter" title="Scenario victory progress"><span style="width:${clamp(victory.progress * 100, 4, 100)}%"></span></div>
+    ${renderScenarioVictoryGoals(victory.goals)}
+    <div class="subhead">Trade Network</div>
+    <div class="stat-grid">
+      ${stat("Routes", tradeStats.routeCount)}
+      ${stat("Value", oneDecimal(tradeStats.value))}
+    </div>
+    <div class="small-note" style="margin-top:7px">${state.civilianRoutes.length} significant civilian lane${state.civilianRoutes.length === 1 ? "" : "s"}; colonizable systems on those routes raise trade value.</div>
     ${renderActiveModifiers()}
     ${renderStrategicPrograms()}
-    <div class="subhead">Queue</div>
-    <div class="queue-list">
-      ${
-        queue.length
-          ? queue
-              .map(
-                (item) => `
-          <div class="queue-row">
-            <strong>${escapeHtml(item.label)}</strong>
-            <div class="meter"><span style="width:${clamp(((item.total - item.remaining) / item.total) * 100, 2, 100)}%"></span></div>
-            <div class="queue-meta">${item.remaining} months remaining</div>
-          </div>
-        `
-              )
-              .join("")
-          : `<div class="empty-state">No active projects.</div>`
-      }
-    </div>
     <div class="subhead">Capital</div>
     <button class="fleet-chip" data-action="select-system" data-system="${home.id}" title="Select and center the capital system.">
       <span class="fleet-dot" style="background:${state.empires.player.color}"></span>
       <span><span class="fleet-name">${escapeHtml(home.name)}</span><span class="fleet-status">${escapeHtml(home.colony.name)}</span></span>
       <span class="mini-tag">Seat</span>
     </button>
+  `;
+}
+
+function renderScenarioVictoryGoals(goals) {
+  return `
+    <div class="queue-list victory-goals">
+      ${goals
+        .map(
+          (goal) => `
+            <div class="queue-row ${goal.complete ? "is-complete" : ""}">
+              <strong>${escapeHtml(goal.label)}</strong>
+              <div class="meter"><span style="width:${clamp(goal.progress * 100, 2, 100)}%"></span></div>
+              <div class="queue-meta">${oneDecimal(goal.value)} / ${oneDecimal(goal.target)}${goal.complete ? " - complete" : ""}</div>
+            </div>
+          `
+        )
+        .join("")}
+    </div>
   `;
 }
 
@@ -6388,6 +6916,17 @@ function systemProgressRows(system) {
     complete: system.stations.shipyard,
   });
 
+  const tradeSignificance = systemTradeSignificance(system);
+  if (tradeSignificance > 0.2) {
+    rows.push({
+      label: "Trade Corridor",
+      status: system.planet && !system.colony ? `${oneDecimal(tradeSignificance)} value - colonizable waypoint` : `${oneDecimal(tradeSignificance)} route value`,
+      progress: clamp(tradeSignificance / 8, 0.05, 1),
+      color: INFRASTRUCTURE_META.tradeHub.color,
+      complete: tradeSignificance >= 8,
+    });
+  }
+
   if (system.owner || system.danger > 0) {
     const defense = system.owner ? getSystemDefense(system, system.owner) : system.danger;
     rows.push({
@@ -6657,27 +7196,31 @@ function canAttack(system, fleet = selectedFleet()) {
 }
 
 function renderDiplomacy() {
-  const contacts = Object.values(state.contacts).filter((contact) => contact.met);
+  const contacts = Object.entries(state.contacts).filter(([, contact]) => contact.met);
   els.diplomacyPanel.innerHTML = `
+    ${renderUnionPanel()}
     <div class="contact-list">
       ${
         contacts.length
           ? contacts
-              .map((contact) => {
-                const empire = state.empires[Object.keys(state.contacts).find((id) => state.contacts[id] === contact)];
+              .map(([empireId, contact]) => {
+                const empire = state.empires[empireId];
                 const relation = Math.round(contact.relation);
-                const color = contact.war ? "#ec6a64" : relation > 20 ? "#67d38f" : relation < -35 ? "#f2b84b" : "#c5d5dc";
+                const status = contactDiplomacyStatus(contact);
                 return `
           <div class="contact-row">
             <div>
               <div class="contact-name" style="color:${empire.color}">${escapeHtml(empire.name)}</div>
-              <div class="contact-meta">Relations ${relation} - Power ${fmt(getFleetPower(empire.id))} - ${
+              <div class="contact-meta">Relations ${relation} - Power ${fmt(getFleetPower(empire.id))} - ${status.label} - ${
                 contact.war ? `War exhaustion ${fmt(contact.exhaustion)}%` : contact.truce ? `Truce ${contact.truce}m` : "Open channel"
               }</div>
             </div>
-            <span class="mini-tag" style="border-color:${color}; color:${color}">${contact.war ? "War" : relation > 20 ? "Warm" : relation < -35 ? "Tense" : "Neutral"}</span>
+            <span class="mini-tag" style="border-color:${status.color}; color:${status.color}">${escapeHtml(status.tag)}</span>
             <div class="contact-actions">
               <button class="ghost-button" data-action="embassy" data-empire="${empire.id}" title="Spend ${escapeHtml(costText(getEmbassyCost()))} to improve relations with ${escapeHtml(empire.name)}." ${contact.war ? "disabled" : ""}>Embassy</button>
+              <button class="ghost-button" data-action="trade-pact" data-empire="${empire.id}" title="Spend ${escapeHtml(costText(getTreatyCost("trade")))} to open a trade route with ${escapeHtml(empire.name)}. Requires positive relations." ${contact.war || contact.tradePact || relation < 4 ? "disabled" : ""}>Trade</button>
+              <button class="ghost-button" data-action="alliance" data-empire="${empire.id}" title="Spend ${escapeHtml(costText(getTreatyCost("alliance")))} to form a defensive alliance and stronger trade route with ${escapeHtml(empire.name)}. Requires 42 relations." ${contact.war || contact.alliance || relation < 42 ? "disabled" : ""}>Alliance</button>
+              <button class="ghost-button" data-action="invite-union" data-empire="${empire.id}" title="Spend ${escapeHtml(costText(getTreatyCost("union")))} to invite ${escapeHtml(empire.name)} into the Aureate Union. Union members vote on shared policies." ${contact.war || contact.union || (relation < 62 && !contact.alliance) ? "disabled" : ""}>Union</button>
               <button class="ghost-button" data-action="rival" data-empire="${empire.id}" title="Declare ${escapeHtml(empire.name)} a rival, worsening relations and gaining 35 influence." ${contact.war ? "disabled" : ""}>Rival</button>
               ${
                 contact.war
@@ -6694,6 +7237,49 @@ function renderDiplomacy() {
           : `<div class="empty-state">No confirmed contacts.</div>`
       }
     </div>
+  `;
+}
+
+function contactDiplomacyStatus(contact) {
+  if (contact.war) return { label: "At war", tag: "War", color: "#ec6a64" };
+  if (contact.union) return { label: "Union member", tag: "Union", color: "#ad8cff" };
+  if (contact.alliance) return { label: "Allied", tag: "Ally", color: "#67d38f" };
+  if (contact.tradePact) return { label: "Trade pact", tag: "Trade", color: "#f2b84b" };
+  if (contact.relation > 20) return { label: "Warm channel", tag: "Warm", color: "#67d38f" };
+  if (contact.relation < -35) return { label: "Tense channel", tag: "Tense", color: "#f2b84b" };
+  return { label: "Neutral channel", tag: "Neutral", color: "#c5d5dc" };
+}
+
+function renderUnionPanel() {
+  const members = state.union.members.map((id) => state.empires[id]?.name || "Commonwealth").join(", ");
+  const active = state.union.activePolicy;
+  return `
+    <div class="subhead">Aureate Union</div>
+    <div class="queue-list">
+      <div class="queue-row">
+        <strong>${state.union.members.length} member${state.union.members.length === 1 ? "" : "s"}</strong>
+        <div class="queue-meta">${escapeHtml(members)}</div>
+      </div>
+      ${
+        active
+          ? `<div class="queue-row"><strong>${escapeHtml(active.label)}</strong><div class="queue-meta">${escapeHtml(active.text)} - expires ${dateLabel(active.expires)}</div></div>`
+          : `<div class="empty-state">No union policy active.</div>`
+      }
+    </div>
+    <div class="contact-actions union-actions">
+      ${UNION_POLICIES.map(
+        (policy) =>
+          `<button class="ghost-button" data-action="union-policy" data-policy="${policy.id}" title="${escapeHtml(policy.text)} Cost: ${escapeHtml(costText(scaledCost({ influence: 24, unity: 24 }, 1 + state.modifiers.diplomacyCost)))}. Members vote; if it passes, all members operate under ${escapeHtml(modifierEffectsText(policy.effects))}.">${escapeHtml(policy.label)}</button>`
+      ).join("")}
+    </div>
+    ${
+      state.union.voteHistory.length
+        ? `<div class="small-note" style="margin-top:8px">${state.union.voteHistory
+            .slice(0, 2)
+            .map((vote) => `${escapeHtml(vote.policy)} ${vote.passed ? "passed" : "failed"} ${vote.support}-${vote.total - vote.support}`)
+            .join(" · ")}</div>`
+        : ""
+    }
   `;
 }
 
@@ -6761,15 +7347,17 @@ function resizeCanvas() {
 }
 
 function drawGalaxy(time) {
+  lastRenderTime = time;
   resizeCanvas();
   ctx.clearRect(0, 0, viewport.width, viewport.height);
   drawBackdrop(time);
-  drawHyperlanes();
-  drawTerritory();
+  drawHyperlanes(time);
+  drawTerritory(time);
+  drawTradeRoutes(time);
   drawSystems(time);
   drawFleetRoutes(time);
   drawFleets(time);
-  drawSelection();
+  drawSelection(time);
 }
 
 function drawBackdrop(time) {
@@ -6787,6 +7375,8 @@ function drawBackdrop(time) {
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, viewport.width, viewport.height);
 
+  drawAssetBackdrops(time);
+  drawNebulaVeils(time);
   drawGalacticDisk(time);
 
   for (const star of state.backgroundStars) {
@@ -6800,12 +7390,85 @@ function drawBackdrop(time) {
   ctx.globalAlpha = 1;
 }
 
+function drawNebulaVeils(time) {
+  if (!state.backgroundNebulae?.length) return;
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+  for (const cloud of state.backgroundNebulae) {
+    const angle = time * cloud.drift + cloud.phase;
+    const x = cloud.x + Math.cos(angle) * cloud.radius * 0.08;
+    const y = cloud.y + Math.sin(angle * 0.7) * cloud.radius * 0.06;
+    const p = worldToScreen(x, y);
+    const radius = cloud.radius * state.camera.zoom;
+    if (p.x < -radius || p.y < -radius || p.x > viewport.width + radius || p.y > viewport.height + radius) continue;
+    const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius);
+    gradient.addColorStop(0, hexToRgba(cloud.color, cloud.alpha));
+    gradient.addColorStop(0.5, hexToRgba(cloud.color, cloud.alpha * 0.38));
+    gradient.addColorStop(1, hexToRgba(cloud.color, 0));
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y, radius * 1.25, radius * 0.68, angle * 0.3, 0, TAU);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function mapTexture(id) {
+  return mapAssets.textures[id] || null;
+}
+
+function textureReady(image) {
+  return Boolean(isMapImageCanvasSafe() && image?.complete && image.naturalWidth);
+}
+
+function drawAssetBackdrops(time) {
+  if (!isMapImageCanvasSafe()) return;
+  const stars = mapTexture("stars");
+  const nebula = mapTexture("nebula");
+  const gas = mapTexture("gas");
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+  if (textureReady(stars)) {
+    ctx.globalAlpha = 0.14;
+    drawCoverImage(stars, 0, 0, viewport.width, viewport.height, Math.sin(time * 0.00002) * 18, Math.cos(time * 0.000017) * 12);
+  }
+  if (textureReady(nebula)) {
+    ctx.globalAlpha = 0.11;
+    drawCoverImage(nebula, -viewport.width * 0.08, viewport.height * 0.06, viewport.width * 0.9, viewport.height * 0.58, Math.sin(time * 0.000013) * 12, 0);
+  }
+  if (textureReady(gas)) {
+    ctx.globalAlpha = 0.09;
+    ctx.globalCompositeOperation = "multiply";
+    drawCoverImage(gas, viewport.width * 0.42, viewport.height * 0.02, viewport.width * 0.68, viewport.height * 0.52, 0, Math.cos(time * 0.000011) * 10);
+  }
+  ctx.restore();
+}
+
+function drawCoverImage(image, x, y, width, height, offsetX = 0, offsetY = 0) {
+  const imageRatio = image.naturalWidth / image.naturalHeight;
+  const targetRatio = width / height;
+  let sourceWidth = image.naturalWidth;
+  let sourceHeight = image.naturalHeight;
+  let sourceX = 0;
+  let sourceY = 0;
+  if (imageRatio > targetRatio) {
+    sourceWidth = image.naturalHeight * targetRatio;
+    sourceX = (image.naturalWidth - sourceWidth) / 2;
+  } else {
+    sourceHeight = image.naturalWidth / targetRatio;
+    sourceY = (image.naturalHeight - sourceHeight) / 2;
+  }
+  ctx.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, x + offsetX, y + offsetY, width, height);
+}
+
 function drawGalacticDisk(time) {
   const core = worldToScreen(0, 0);
   const zoom = clamp(state.camera.zoom, 0.22, 1.4);
   const diskRadius = state.galaxy.scale * zoom * 1.42;
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
+
+  drawGalaxyTexture(core, diskRadius, time);
 
   const halo = ctx.createRadialGradient(core.x, core.y, 0, core.x, core.y, diskRadius);
   halo.addColorStop(0, "rgba(255, 232, 172, 0.38)");
@@ -6821,6 +7484,8 @@ function drawGalacticDisk(time) {
   for (let arm = 0; arm < 5; arm += 1) {
     drawDustArm(core, diskRadius, arm, time);
   }
+
+  drawOrbitRings(core, diskRadius, time);
 
   const coreGradient = ctx.createRadialGradient(core.x, core.y, 0, core.x, core.y, Math.max(36, diskRadius * 0.18));
   coreGradient.addColorStop(0, "rgba(255, 245, 208, 0.9)");
@@ -6838,6 +7503,100 @@ function drawGalacticDisk(time) {
   ctx.beginPath();
   ctx.arc(core.x, core.y, Math.max(18, 42 * zoom), 0, Math.PI * 2);
   ctx.stroke();
+  ctx.restore();
+}
+
+function drawGalaxyTexture(core, diskRadius, time) {
+  drawProceduralGalaxyTexture(core, diskRadius, time);
+
+  const image = mapTexture("galaxy");
+  if (!textureReady(image)) return;
+  ctx.save();
+  ctx.globalAlpha = 0.34;
+  ctx.globalCompositeOperation = "screen";
+  ctx.translate(core.x, core.y);
+  ctx.rotate(-0.18 + time * 0.000003);
+  ctx.scale(1, 0.62);
+  ctx.beginPath();
+  ctx.ellipse(0, 0, diskRadius * 0.8, diskRadius * 0.8, 0, 0, TAU);
+  ctx.clip();
+  ctx.filter = "saturate(130%) contrast(116%) brightness(72%)";
+  const size = diskRadius * 1.86;
+  ctx.drawImage(image, -size / 2, -size / 2, size, size);
+  ctx.filter = "none";
+  ctx.restore();
+}
+
+function isMapImageCanvasSafe() {
+  return typeof window !== "undefined" && window.location?.protocol !== "file:";
+}
+
+function drawProceduralGalaxyTexture(core, diskRadius, time) {
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+  ctx.translate(core.x, core.y);
+  ctx.rotate(-0.22 + time * 0.0000025);
+  ctx.scale(1, 0.62);
+
+  for (let arm = 0; arm < 5; arm += 1) {
+    const start = (arm / 5) * TAU + time * 0.000004;
+    for (let step = 0; step < 62; step += 1) {
+      const t = step / 61;
+      const radius = diskRadius * (0.08 + t * 0.72);
+      const angle = start + t * TAU * 1.28 + Math.sin(t * 8 + arm) * 0.18;
+      const x = Math.cos(angle) * radius;
+      const y = Math.sin(angle) * radius;
+      const size = diskRadius * (0.018 + (1 - t) * 0.026);
+      const blue = arm % 2 === 0;
+      const gradient = ctx.createRadialGradient(x, y, 0, x, y, size);
+      gradient.addColorStop(0, blue ? "rgba(160, 221, 255, 0.11)" : "rgba(255, 218, 168, 0.1)");
+      gradient.addColorStop(0.45, blue ? "rgba(76, 153, 205, 0.045)" : "rgba(196, 134, 86, 0.04)");
+      gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, TAU);
+      ctx.fill();
+    }
+  }
+
+  ctx.globalCompositeOperation = "multiply";
+  for (let lane = 0; lane < 7; lane += 1) {
+    ctx.strokeStyle = "rgba(30, 18, 12, 0.08)";
+    ctx.lineWidth = clamp(diskRadius * 0.012, 3, 14);
+    ctx.beginPath();
+    const start = (lane / 7) * TAU - time * 0.000002;
+    for (let step = 0; step < 110; step += 1) {
+      const t = step / 109;
+      const radius = diskRadius * (0.12 + t * 0.58);
+      const angle = start + t * TAU * 1.7 + Math.sin(t * 9 + lane) * 0.1;
+      const x = Math.cos(angle) * radius;
+      const y = Math.sin(angle) * radius;
+      if (step === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+function drawOrbitRings(core, diskRadius, time) {
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+  const ringCount = 6;
+  for (let i = 1; i <= ringCount; i++) {
+    const t = i / (ringCount + 1);
+    const radius = diskRadius * (0.15 + t * 0.68);
+    const shimmer = 0.06 + Math.sin(time / 1800 + i) * 0.018;
+    ctx.strokeStyle = `rgba(151, 191, 198, ${shimmer})`;
+    ctx.lineWidth = clamp(1.2 * state.camera.zoom, 0.45, 1.8);
+    ctx.setLineDash([4 + i, 10 + i * 2]);
+    ctx.lineDashOffset = -(time / (26 + i * 4)) % 100;
+    ctx.beginPath();
+    ctx.ellipse(core.x, core.y, radius, radius * 0.62, -0.22, 0, TAU);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
   ctx.restore();
 }
 
@@ -6860,7 +7619,7 @@ function drawDustArm(core, diskRadius, arm, time) {
   ctx.stroke();
 }
 
-function drawHyperlanes() {
+function drawHyperlanes(time) {
   ctx.lineCap = "round";
   for (const system of state.systems) {
     for (const neighborId of system.hyperlanes) {
@@ -6870,8 +7629,10 @@ function drawHyperlanes() {
       const bKnown = neighbor.known || neighbor.surveyedBy.player || neighbor.owner === "player";
       const bothKnown = aKnown && bKnown;
       if (!bothKnown && state.mapMode !== "science") continue;
-      const a = worldToScreen(system.x, system.y);
-      const b = worldToScreen(neighbor.x, neighbor.y);
+      const systemPos = systemVisualPosition(system, time);
+      const neighborPos = systemVisualPosition(neighbor, time);
+      const a = worldToScreen(systemPos.x, systemPos.y);
+      const b = worldToScreen(neighborPos.x, neighborPos.y);
       ctx.beginPath();
       ctx.moveTo(a.x, a.y);
       ctx.lineTo(b.x, b.y);
@@ -6882,14 +7643,15 @@ function drawHyperlanes() {
   }
 }
 
-function drawTerritory() {
+function drawTerritory(time) {
   if (state.mapMode === "science") return;
-  drawTerritoryLinks();
+  drawTerritoryLinks(time);
   for (const system of state.systems) {
     if (!system.owner || !ownerTerritoryVisible(system)) continue;
     const empire = state.empires[system.owner];
     if (!empire) continue;
-    const p = worldToScreen(system.x, system.y);
+    const pos = systemVisualPosition(system, time);
+    const p = worldToScreen(pos.x, pos.y);
     const radius = (system.colony ? 70 : 54) * clamp(state.camera.zoom, 0.35, 1.25);
     const gradient = ctx.createRadialGradient(p.x, p.y, 2, p.x, p.y, radius);
     gradient.addColorStop(0, `${hexToRgba(empire.color, 0.3)}`);
@@ -6907,10 +7669,10 @@ function drawTerritory() {
     ctx.stroke();
     ctx.setLineDash([]);
   }
-  drawFactionBorders();
+  drawFactionBorders(time);
 }
 
-function drawTerritoryLinks() {
+function drawTerritoryLinks(time) {
   ctx.save();
   ctx.lineCap = "round";
   for (const system of state.systems) {
@@ -6921,8 +7683,10 @@ function drawTerritoryLinks() {
       if (neighborId < system.id) continue;
       const neighbor = state.systems[neighborId];
       if (neighbor.owner !== system.owner || !ownerTerritoryVisible(neighbor)) continue;
-      const a = worldToScreen(system.x, system.y);
-      const b = worldToScreen(neighbor.x, neighbor.y);
+      const systemPos = systemVisualPosition(system, time);
+      const neighborPos = systemVisualPosition(neighbor, time);
+      const a = worldToScreen(systemPos.x, systemPos.y);
+      const b = worldToScreen(neighborPos.x, neighborPos.y);
       ctx.strokeStyle = hexToRgba(empire.color, system.owner === "player" ? 0.25 : 0.17);
       ctx.lineWidth = clamp(13 * state.camera.zoom, 4, 16);
       ctx.beginPath();
@@ -6940,7 +7704,7 @@ function ownerTerritoryVisible(system) {
   return Boolean(system.known || system.surveyedBy.player || state.contacts[system.owner]?.met);
 }
 
-function drawFactionBorders() {
+function drawFactionBorders(time) {
   if (state.mapMode === "science") return;
   ctx.save();
   ctx.lineCap = "round";
@@ -6951,7 +7715,7 @@ function drawFactionBorders() {
       const neighbor = state.systems[neighborId];
       if (!isVisibleBorderNeighbor(system, neighbor)) continue;
       if (neighbor.owner === system.owner) continue;
-      drawBorderGate(system, neighbor);
+      drawBorderGate(system, neighbor, time);
     }
   }
   ctx.restore();
@@ -6962,9 +7726,58 @@ function isVisibleBorderNeighbor(system, neighbor) {
   return Boolean(neighbor.known || neighbor.surveyedBy.player || system.owner === "player");
 }
 
-function drawBorderGate(system, neighbor) {
-  const a = worldToScreen(system.x, system.y);
-  const b = worldToScreen(neighbor.x, neighbor.y);
+function drawTradeRoutes(time) {
+  if (state.mapMode === "military" || !state.civilianRoutes?.length) return;
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.globalCompositeOperation = "screen";
+  for (const route of state.civilianRoutes) {
+    const points = route.path.map((id) => {
+      const pos = systemVisualPosition(state.systems[id], time);
+      return worldToScreen(pos.x, pos.y);
+    });
+    const color = route.kind === "union" ? "#ad8cff" : route.kind === "alliance" ? "#67d38f" : "#f2b84b";
+    ctx.strokeStyle = hexToRgba(color, route.kind === "internal" ? 0.16 : 0.26);
+    ctx.lineWidth = clamp(route.value * state.camera.zoom * 0.75, 1.1, 4.2);
+    ctx.setLineDash(route.kind === "internal" ? [5, 10] : [9, 7]);
+    ctx.lineDashOffset = -(time / 54) % 80;
+    ctx.beginPath();
+    points.forEach((point, index) => {
+      if (index === 0) ctx.moveTo(point.x, point.y);
+      else ctx.lineTo(point.x, point.y);
+    });
+    ctx.stroke();
+    ctx.setLineDash([]);
+    drawCivilianTraffic(points, time, color, route);
+  }
+  ctx.restore();
+}
+
+function drawCivilianTraffic(points, time, color, route) {
+  if (points.length < 2) return;
+  ctx.fillStyle = hexToRgba(color, 0.8);
+  const phase = (time / (1700 - Math.min(850, route.value * 120))) % 1;
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i];
+    const b = points[i + 1];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const distance = Math.hypot(dx, dy);
+    const count = Math.max(1, Math.floor(distance / 115));
+    for (let j = 0; j < count; j++) {
+      const t = (phase + j / count + route.path[0] * 0.037) % 1;
+      ctx.beginPath();
+      ctx.arc(a.x + dx * t, a.y + dy * t, clamp(1.2 + route.value * 0.12, 1.2, 2.4), 0, TAU);
+      ctx.fill();
+    }
+  }
+}
+
+function drawBorderGate(system, neighbor, time) {
+  const systemPos = systemVisualPosition(system, time);
+  const neighborPos = systemVisualPosition(neighbor, time);
+  const a = worldToScreen(systemPos.x, systemPos.y);
+  const b = worldToScreen(neighborPos.x, neighborPos.y);
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   const distance = Math.hypot(dx, dy);
@@ -7020,7 +7833,8 @@ function drawSystems(time) {
     const known = system.known || system.surveyedBy.player || system.owner === "player";
     const surveyed = system.surveyedBy.player;
     const isCapital = system.id === state.empires.player.homeSystemId;
-    const p = worldToScreen(system.x, system.y);
+    const position = systemVisualPosition(system, time);
+    const p = worldToScreen(position.x, position.y);
     if (p.x < -80 || p.y < -80 || p.x > viewport.width + 80 || p.y > viewport.height + 80) continue;
     const baseRadius = system.star.radius * clamp(state.camera.zoom * 1.75, 0.7, 1.7);
     const pulse = 1 + Math.sin(time / 800 + system.id) * 0.08;
@@ -7089,20 +7903,19 @@ function drawSystems(time) {
       }
     }
 
-    ctx.globalAlpha = surveyed || isCapital ? 1 : 0.46;
-    const glow = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius * 4);
-    glow.addColorStop(0, hexToRgba(system.star.color, surveyed ? 0.9 : 0.2));
-    glow.addColorStop(1, hexToRgba(system.star.color, 0));
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, radius * 4, 0, Math.PI * 2);
-    ctx.fill();
+    const tradeSignificance = systemTradeSignificance(system);
+    if (tradeSignificance > 0.45 && (known || system.owner === "player")) {
+      const colonizableRoute = system.planet && !system.colony;
+      ctx.strokeStyle = colonizableRoute ? "rgba(242, 184, 75, 0.78)" : "rgba(242, 184, 75, 0.32)";
+      ctx.lineWidth = colonizableRoute ? 1.8 : 1.1;
+      ctx.setLineDash(colonizableRoute ? [5, 4] : []);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, radius + 11 + Math.min(14, tradeSignificance * 1.4), 0, TAU);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
 
-    ctx.fillStyle = surveyed ? system.star.color : "#66717a";
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, surveyed ? radius : radius * 0.72, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalAlpha = 1;
+    drawSystemStar(system, p, radius, time, surveyed, isCapital);
 
     if (isCapital) drawCapitalMarker(p, radius);
 
@@ -7119,6 +7932,53 @@ function drawSystems(time) {
       ctx.fillText(system.name, p.x, p.y - radius - 9);
     }
   }
+}
+
+function drawSystemStar(system, p, radius, time, surveyed, isCapital) {
+  const alpha = surveyed || isCapital ? 1 : 0.46;
+  const flare = 1 + Math.sin(time / 640 + system.id * 1.7) * 0.08;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.globalAlpha = alpha;
+
+  const glow = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius * 5.2);
+  glow.addColorStop(0, hexToRgba(system.star.color, surveyed ? 0.95 : 0.22));
+  glow.addColorStop(0.36, hexToRgba(system.star.color, surveyed ? 0.24 : 0.08));
+  glow.addColorStop(1, hexToRgba(system.star.color, 0));
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, radius * 5.2, 0, TAU);
+  ctx.fill();
+
+  if (surveyed || isCapital) {
+    ctx.strokeStyle = hexToRgba(system.star.color, 0.32);
+    ctx.lineWidth = clamp(1.2 * state.camera.zoom, 0.45, 1.4);
+    ctx.beginPath();
+    ctx.moveTo(p.x - radius * 2.5 * flare, p.y);
+    ctx.lineTo(p.x + radius * 2.5 * flare, p.y);
+    ctx.moveTo(p.x, p.y - radius * 2.5 * flare);
+    ctx.lineTo(p.x, p.y + radius * 2.5 * flare);
+    ctx.stroke();
+  }
+
+  const starImage = mapTexture("star");
+  if ((surveyed || isCapital) && textureReady(starImage)) {
+    const size = radius * 3.2;
+    ctx.globalAlpha = alpha * 0.42;
+    ctx.globalCompositeOperation = "screen";
+    ctx.drawImage(starImage, p.x - size / 2, p.y - size / 2, size, size);
+    ctx.globalAlpha = alpha;
+  }
+
+  const core = ctx.createRadialGradient(p.x - radius * 0.32, p.y - radius * 0.34, 0, p.x, p.y, radius * 1.2);
+  core.addColorStop(0, "#ffffff");
+  core.addColorStop(0.42, surveyed ? system.star.color : "#8d9aa3");
+  core.addColorStop(1, surveyed ? hexToRgba(system.star.color, 0.18) : "rgba(102,113,122,0.18)");
+  ctx.fillStyle = core;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, surveyed ? radius : radius * 0.72, 0, TAU);
+  ctx.fill();
+  ctx.restore();
 }
 
 function drawCapitalMarker(p, radius) {
@@ -7430,12 +8290,12 @@ function drawOwnerBadge(system, p, radius) {
 function drawFleets(time) {
   for (const fleet of state.fleets) {
     if (!fleetVisible(fleet)) continue;
-    const pos = fleetPosition(fleet);
+    const pos = fleetPosition(fleet, time);
     const p = worldToScreen(pos.x, pos.y);
     if (p.x < -40 || p.y < -40 || p.x > viewport.width + 40 || p.y > viewport.height + 40) continue;
     const color = fleetColor(fleet);
     const moving = fleet.route.length > 0;
-    const next = moving ? state.systems[fleet.route[0]] : null;
+    const next = moving ? systemVisualPosition(state.systems[fleet.route[0]], time) : null;
     const routeAngle = next ? Math.atan2(next.y - pos.y, next.x - pos.x) + Math.PI / 2 : Math.sin(time / 950 + fleet.id.length) * 0.2;
     const bob = Math.sin(time / 360 + fleet.id.length) * (moving ? 1.8 : 1.15);
     const shimmer = 0.84 + Math.sin(time / 220 + fleet.id.length) * 0.16;
@@ -7554,7 +8414,9 @@ function fleetColor(fleet) {
 function drawFleetRoutes(time) {
   const fleet = selectedFleet();
   if (!fleet || !fleet.route.length || !fleetVisible(fleet)) return;
-  const points = [fleetPosition(fleet), ...fleet.route.map((id) => state.systems[id])].map((point) => worldToScreen(point.x, point.y));
+  const points = [fleetPosition(fleet, time), ...fleet.route.map((id) => systemVisualPosition(state.systems[id], time))].map((point) =>
+    worldToScreen(point.x, point.y)
+  );
   ctx.save();
   ctx.strokeStyle = fleet.owner === "player" ? "rgba(79, 209, 216, 0.58)" : "rgba(242, 184, 75, 0.5)";
   ctx.lineWidth = 1.4;
@@ -7599,21 +8461,24 @@ function fleetVisible(fleet) {
   );
 }
 
-function fleetPosition(fleet) {
-  if (!fleet.route.length) return state.systems[fleet.location];
+function fleetPosition(fleet, time = lastRenderTime) {
+  if (!fleet.route.length) return systemVisualPosition(state.systems[fleet.location], time);
   const from = state.systems[fleet.location];
   const to = state.systems[fleet.route[0]];
   const t = clamp(fleet.progress / fleet.segmentMonths, 0, 1);
+  const fromPos = systemVisualPosition(from, time);
+  const toPos = systemVisualPosition(to, time);
   return {
-    x: from.x + (to.x - from.x) * t,
-    y: from.y + (to.y - from.y) * t,
+    x: fromPos.x + (toPos.x - fromPos.x) * t,
+    y: fromPos.y + (toPos.y - fromPos.y) * t,
   };
 }
 
-function drawSelection() {
+function drawSelection(time) {
   const system = selectedSystem();
   if (!system) return;
-  const p = worldToScreen(system.x, system.y);
+  const pos = systemVisualPosition(system, time);
+  const p = worldToScreen(pos.x, pos.y);
   ctx.strokeStyle = "#ffffff";
   ctx.lineWidth = 1.4;
   ctx.setLineDash([6, 5]);
@@ -7665,13 +8530,14 @@ function selectNearestFleet(screenX, screenY) {
 }
 
 function selectNearestSystem(screenX, screenY) {
-  const world = screenToWorld(screenX, screenY);
   let best = null;
   for (const system of state.systems) {
-    const distance = Math.hypot(system.x - world.x, system.y - world.y);
+    const pos = systemVisualPosition(system);
+    const p = worldToScreen(pos.x, pos.y);
+    const distance = Math.hypot(p.x - screenX, p.y - screenY);
     if (!best || distance < best.distance) best = { system, distance };
   }
-  const threshold = 34 / state.camera.zoom;
+  const threshold = 34;
   if (best && best.distance <= threshold) {
     selectSystem(best.system.id, false);
   }
@@ -7779,6 +8645,10 @@ function handleAction(action, target) {
   if (action === "choose-tech") return chooseTech(data.tech);
   if (action === "remove-tech") return commandRemoveQueuedResearch(data.tech);
   if (action === "embassy") return improveRelations(data.empire);
+  if (action === "trade-pact") return commandTradePact(data.empire);
+  if (action === "alliance") return commandAlliance(data.empire);
+  if (action === "invite-union") return commandInviteUnion(data.empire);
+  if (action === "union-policy") return commandProposeUnionPolicy(data.policy);
   if (action === "rival") return rivalEmpire(data.empire);
   if (action === "declare-war") return declareWar(data.empire, true);
   if (action === "truce") return negotiateTruce(data.empire);

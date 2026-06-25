@@ -106,6 +106,11 @@ async function runViewport(browser, viewport) {
     resolveDecision(0);
 
     const home = state.systems[state.empires.player.homeSystemId];
+    const homeDistanceFromCore = Math.hypot(home.x, home.y);
+    const closestSystemToCore = Math.min(...state.systems.map((system) => Math.hypot(system.x, system.y)));
+    const homeOrbitStart = systemVisualPosition(home, 0);
+    const homeOrbitLater = systemVisualPosition(home, 12000);
+    const orbitMotionWorks = Math.hypot(homeOrbitStart.x - homeOrbitLater.x, homeOrbitStart.y - homeOrbitLater.y) > 8;
     state.selectedSystemId = home.id;
     state.selectedFleetId = "fleet-home";
     updateUI();
@@ -339,6 +344,51 @@ async function runViewport(browser, viewport) {
       state.timedModifiers.length === programModifiersBefore + 1 &&
       state.timedModifiers.some((modifier) => modifier.id.startsWith("program-frontier-survey-"));
     const scenarioSummaryVisible = document.querySelector("#menuScenarioSummary")?.textContent.length > 20;
+    const victoryStatus = scenarioVictoryStatus();
+    const victoryGoalsRender = document.querySelectorAll("#empirePanel .victory-goals .queue-row").length;
+    const leftQueueOmitted = ![...document.querySelectorAll("#empirePanel .subhead")].some((item) => item.textContent.trim() === "Queue");
+
+    const diplomacyTarget = state.aiTemplates[0]?.id;
+    let diplomacyExpanded = false;
+    let unionPolicyActive = false;
+    let tradeRoutesWork = false;
+    let colonizableRouteValue = false;
+    if (diplomacyTarget) {
+      state.systems.forEach((system) => {
+        system.known = true;
+      });
+      const contact = state.contacts[diplomacyTarget];
+      contact.met = true;
+      contact.war = false;
+      contact.truce = 0;
+      contact.relation = 88;
+      state.resources.energy += 1000;
+      state.resources.influence += 1000;
+      state.resources.unity += 1000;
+      commandTradePact(diplomacyTarget);
+      commandAlliance(diplomacyTarget);
+      commandInviteUnion(diplomacyTarget);
+      const routeWithMidpoint = state.tradeRoutes.find((route) => route.path.length > 2);
+      if (routeWithMidpoint) {
+        const midpoint = state.systems[routeWithMidpoint.path[1]];
+        midpoint.planet =
+          midpoint.planet ||
+          {
+            name: `${midpoint.name} Haven`,
+            habitability: 0.66,
+            size: 15,
+            type: "Continental",
+          };
+        midpoint.colony = null;
+      }
+      refreshTradeRoutes();
+      commandProposeUnionPolicy("open-bourses");
+      diplomacyExpanded = contact.tradePact && contact.alliance && contact.union && state.union.members.includes(diplomacyTarget);
+      unionPolicyActive = state.union.activePolicy?.id === "open-bourses";
+      tradeRoutesWork = state.tradeRoutes.length > 0 && state.civilianRoutes.length > 0 && tradeStatsForOwner("player").value > 0;
+      colonizableRouteValue = state.systems.some((system) => system.planet && !system.colony && systemTradeSignificance(system) > 0);
+      updateUI();
+    }
 
     const data = context.getImageData(0, 0, canvas.width, canvas.height).data;
     let lit = 0;
@@ -358,10 +408,21 @@ async function runViewport(browser, viewport) {
       requestedSystems: state.galaxy.count,
       systemNamePool: SYSTEM_NAMES.length,
       uniqueSystemNames: new Set(SYSTEM_NAMES).size,
+      homeDistanceFromCore,
+      closestSystemToCore,
+      coreExclusion: GALACTIC_CORE_EXCLUSION,
+      orbitMotionWorks,
       shape: state.galaxy.shape,
       difficulty: state.galaxy.difficulty,
       scenario: state.galaxy.scenario,
       scenarioSummaryVisible,
+      victoryGoals: victoryStatus.goals.length,
+      victoryGoalsRender,
+      leftQueueOmitted,
+      diplomacyExpanded,
+      unionPolicyActive,
+      tradeRoutesWork,
+      colonizableRouteValue,
       researchables: TECH_LIBRARY.length,
       events: SPACE_EVENTS.length,
       allResearchHaveModifiers,
@@ -472,11 +533,18 @@ async function runViewport(browser, viewport) {
   if (result.systemNamePool < 1500 || result.uniqueSystemNames !== result.systemNamePool) {
     throw new Error("Procedural system name pool does not contain 1500 unique names.");
   }
+  if (result.homeDistanceFromCore <= result.coreExclusion) throw new Error("Player capital still starts in the galactic core.");
+  if (result.closestSystemToCore <= result.coreExclusion) throw new Error("A generated system is too close to the galactic core.");
+  if (!result.orbitMotionWorks) throw new Error("System orbital motion around the galactic core is not active.");
   if (result.aiCount !== (viewport.width < 500 ? 5 : 6)) throw new Error("AI empire counter was not applied.");
   if (result.difficulty !== (viewport.width < 500 ? "cadet" : "veteran")) throw new Error("AI difficulty was not applied.");
   if (result.scenario !== (viewport.width < 500 ? "frontier" : "relic") || !result.scenarioSummaryVisible) {
     throw new Error("Scenario selector did not apply or describe the selected scenario.");
   }
+  if (result.victoryGoals < 3 || result.victoryGoalsRender < 3) throw new Error("Scenario-scaled victory goals did not render.");
+  if (!result.leftQueueOmitted) throw new Error("The left empire panel still renders the build/ship queue.");
+  if (!result.diplomacyExpanded || !result.unionPolicyActive) throw new Error("Expanded diplomacy treaties or union policy voting did not work.");
+  if (!result.tradeRoutesWork || !result.colonizableRouteValue) throw new Error("Trade/civilian routes or colonizable route significance did not work.");
   if (result.researchables < 30) throw new Error("Expanded research deck did not load.");
   if (result.events < 36) throw new Error("Expanded event deck did not load.");
   if (!result.allResearchHaveModifiers) throw new Error("Every research must declare at least one modifier.");
